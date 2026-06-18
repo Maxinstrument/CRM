@@ -359,6 +359,28 @@ RWG.app = (function () {
     D.setUserName(id, name); closeModal(); renderMain(); U.toast('Saved', true);
   }
 
+  const appBaseUrl = () => location.origin + location.pathname;   // e.g. https://maxinstrument.github.io/CRM/
+  function buildInviteModal() {
+    const url = appBaseUrl();
+    const msg = `You're invited to join the Resilient Wealth Group CRM.\n\n1. Open this link: ${url}\n2. Click "Request access" and sign up with your email.\n3. I'll approve your account and you'll be in.\n\n— Resilient Wealth Group`;
+    return `
+    <div class="scrim" data-action="close-modal"></div>
+    <div class="modal-card" role="dialog" aria-label="Invite a teammate">
+      <div class="modal-head"><h2>Invite a teammate</h2><p>Email them a link to join — they sign up, then you approve them in one click.</p></div>
+      <div class="modal-body">
+        <div class="field-group"><label class="lbl">Their email</label><input id="inv-email" type="email" placeholder="name@example.com"></div>
+        <div class="field-group"><label class="lbl">Invite message</label><textarea id="inv-msg" rows="7">${U.esc(msg)}</textarea>
+          <div class="cell-sub mt-8">Edit if you like, then send by email or copy it to a text/Slack.</div></div>
+        <p class="cell-sub">After they sign up, they appear under <b>Pending approvals</b> on this page — approve with one click.</p>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-quiet" data-action="close-modal">Cancel</button>
+        <button class="btn btn-ghost" data-action="invite-copy">Copy message</button>
+        <button class="btn btn-gold" data-action="invite-email">✉ Open email</button>
+      </div>
+    </div>`;
+  }
+
   function saveLeadEdits(id) {
     const updates = {};
     D.EDITABLE_FIELDS.forEach(f => { const el = $('#edit-' + f.key); if (el) updates[f.key] = el.value; });
@@ -683,6 +705,20 @@ RWG.app = (function () {
         D.setUserRole(el.dataset.id, el.dataset.role);
         U.toast(el.dataset.role === 'admin' ? 'Promoted to admin' : 'Changed to agent', true);
         renderMain();
+        break;
+      }
+      case 'invite': if (RWG.auth.isAdmin()) openModal(buildInviteModal()); break;
+      case 'invite-email': {
+        const email = $('#inv-email') ? $('#inv-email').value.trim() : '';
+        const msg = $('#inv-msg') ? $('#inv-msg').value : '';
+        const subject = 'Your invite to the Resilient Wealth Group CRM';
+        window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(msg)}`;
+        break;
+      }
+      case 'invite-copy': {
+        const t = $('#inv-msg'), msg = t ? t.value : '';
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(msg).then(() => U.toast('Invite copied', true), () => { if (t) t.select(); });
+        else if (t) { t.select(); try { document.execCommand('copy'); U.toast('Invite copied', true); } catch (e) {} }
         break;
       }
       case 'edit-user': if (RWG.auth.isAdmin()) openModal(buildEditUserModal(el.dataset.id)); break;

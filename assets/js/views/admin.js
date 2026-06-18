@@ -129,7 +129,8 @@ RWG.views.admin = (function () {
     const activeUsers = D.users().filter(u => u.status === 'active')
       .sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : (a.role === 'admin' ? -1 : 1)));
     const rosterCard = `<div class="card mb-16">
-      <div class="card-head"><h3>Team &amp; roles</h3><span class="sub">promote a teammate to admin (full access + can delete leads)</span></div>
+      <div class="card-head"><h3>Team &amp; roles</h3><span class="sub">promote a teammate to admin (full access + can delete leads)</span>
+        <span class="topbar-spacer"></span><button class="btn btn-gold btn-sm" data-action="invite">✉ Invite teammate</button></div>
       ${activeUsers.map(u => {
         const isMe = u.id === meId;
         const roleChip = u.role === 'admin' ? '<span class="chip tier-gold">Admin</span>' : '<span class="chip tier-low">Agent</span>';
