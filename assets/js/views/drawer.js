@@ -196,6 +196,9 @@ RWG.views.drawer = function (leadId, opts) {
 
       ${history}
 
+      ${isAdmin ? `<div class="section-title">Danger zone</div>
+      <button class="btn btn-danger btn-sm" data-action="delete-lead" data-id="${l.id}">🗑 Delete this lead permanently</button>` : ''}
+
     </div>
   </aside>`;
 };

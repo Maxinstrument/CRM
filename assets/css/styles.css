@@ -125,6 +125,10 @@ a{color:inherit;}
 .gate-tab{flex:1;padding:9px;border:none;background:transparent;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--muted);transition:.15s;}
 .gate-tab.active{background:#fff;color:var(--navy);box-shadow:0 2px 8px -4px rgba(14,36,64,.4);}
 .gate-error{color:var(--bad);font-size:13px;min-height:18px;margin:6px 0 0;}
+.linklike{background:none;border:none;color:#8a6f24;font-size:12.5px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline;text-decoration-color:rgba(194,161,77,.5);}
+.linklike:hover{color:var(--gold);}
+.remember-lbl{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;user-select:none;}
+.remember-lbl input{width:auto;accent-color:var(--gold);cursor:pointer;}
 .gate-note{color:var(--muted);font-size:12px;margin:18px 0 0;line-height:1.5;}
 .gate-success{
   background:var(--tier-high-bg);border:1px solid rgba(46,125,91,.3);
@@ -208,6 +212,16 @@ input::placeholder,textarea::placeholder{color:#9aa6b4;}
 .side-foot{padding:12px;border-top:1px solid rgba(255,255,255,.1);font-size:11px;color:rgba(255,255,255,.4);}
 
 .main{grid-area:main;padding:26px 28px 70px;overflow-x:hidden;}
+
+/* admin "view as agent" banner */
+.viewas-banner{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  background:linear-gradient(160deg,var(--gold),var(--gold-soft));color:var(--navy-deep);
+  font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px;margin-bottom:18px;
+  box-shadow:0 8px 22px -16px rgba(194,161,77,.9);
+}
+.viewas-banner .btn{margin-left:auto;background:var(--navy);color:#fff;}
+.viewas-banner .btn:hover{background:var(--navy-deep);}
 
 /* ============================================================
    Cards & layout
@@ -358,6 +372,8 @@ table.data thead th.th-cell{white-space:nowrap;}
 .bulkbar .fbar-select option{color:var(--ink);}
 .bulkbar .btn-quiet{background:rgba(255,255,255,.14);color:#fff;}
 .bulkbar .btn-quiet:hover{background:rgba(255,255,255,.24);}
+.bulkbar .bulk-del{background:rgba(178,58,72,.92);color:#fff;border-color:transparent;}
+.bulkbar .bulk-del:hover{background:var(--bad);}
 
 /* selection column */
 table.data thead th.sel-th,table.data td.sel-cell{width:42px;text-align:center;padding-left:12px;padding-right:6px;cursor:default;}

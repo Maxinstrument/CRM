@@ -95,6 +95,7 @@ RWG.views.admin = (function () {
       </select>
       <button class="btn btn-gold btn-sm" data-action="bulk-assign">Apply</button>
       <span class="fbar-spacer"></span>
+      <button class="btn btn-danger btn-sm bulk-del" data-action="bulk-delete">🗑 Delete</button>
       <button class="btn btn-quiet btn-sm" data-action="bulk-clear">Clear selection</button>
     </div>`;
   }
@@ -123,6 +124,33 @@ RWG.views.admin = (function () {
           <button class="btn btn-danger btn-sm" data-action="deny-user" data-id="${u.id}">Deny</button></div>
       </div>`).join('')}</div>` : '';
 
+    // Team & roles — promote teammates to admin / demote back to agent
+    const meId = (RWG.auth.currentUser() || {}).id;
+    const activeUsers = D.users().filter(u => u.status === 'active')
+      .sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : (a.role === 'admin' ? -1 : 1)));
+    const rosterCard = `<div class="card mb-16">
+      <div class="card-head"><h3>Team &amp; roles</h3><span class="sub">promote a teammate to admin (full access + can delete leads)</span></div>
+      ${activeUsers.map(u => {
+        const isMe = u.id === meId;
+        const roleChip = u.role === 'admin' ? '<span class="chip tier-gold">Admin</span>' : '<span class="chip tier-low">Agent</span>';
+        const editBtn = `<button class="btn btn-quiet btn-sm" data-action="edit-user" data-id="${u.id}">Edit</button>`;
+        let extra = '<span class="cell-sub" style="align-self:center">You</span>';
+        if (!isMe) {
+          const isOwner = (u.email || '').toLowerCase() === (RWG.OWNER_EMAIL || '').toLowerCase();
+          const viewBtn = u.role === 'agent' ? `<button class="btn btn-quiet btn-sm" data-action="view-as" data-id="${u.id}">👁 View as</button>` : '';
+          const roleBtn = u.role === 'admin'
+            ? `<button class="btn btn-ghost btn-sm" data-action="set-role" data-id="${u.id}" data-role="agent">Make agent</button>`
+            : `<button class="btn btn-ghost btn-sm" data-action="set-role" data-id="${u.id}" data-role="admin">Make admin</button>`;
+          const removeBtn = isOwner ? '' : `<button class="btn btn-danger btn-sm" data-action="remove-user" data-id="${u.id}">Remove</button>`;
+          extra = `${viewBtn}${roleBtn}${removeBtn}`;
+        }
+        const action = `<div class="flex wrap-gap" style="gap:8px">${editBtn}${extra}</div>`;
+        return `<div class="row-between" style="padding:10px 0;border-bottom:1px solid var(--line)">
+          <div class="flex">${U.avatar(u, 34)}<div><div style="font-weight:600">${U.esc(u.name)} ${roleChip}</div><div class="cell-sub">${U.esc(u.email)}</div></div></div>
+          <div>${action}</div></div>`;
+      }).join('')}
+    </div>`;
+
     const cards = board.map(r => `<div class="card">
       <div class="row-between mb-16"><div class="flex">${U.avatar(r.agent, 42)}<div>
         <div style="font-weight:700;font-size:15px">${U.esc(r.agent.name)}</div><div class="cell-sub">${U.esc(r.agent.email)}</div></div></div>
@@ -136,7 +164,7 @@ RWG.views.admin = (function () {
       <div class="mt-16"><span class="pill-soft">${r.leadCount} leads</span> <span class="pill-soft">${r.reachRate}% reach rate</span></div>
     </div>`).join('');
 
-    return pendingCard + `<div class="grid grid-2">${cards}</div>`;
+    return pendingCard + rosterCard + (cards ? `<div class="grid grid-2">${cards}</div>` : '');
   }
 
   function upload() {
@@ -205,9 +233,8 @@ RWG.views.admin = (function () {
             </div>
           </div>
           <div class="card">
-            <div class="card-head"><h3>Prototype data</h3></div>
-            <p class="muted" style="font-size:13.5px">This demo runs on sample data saved in your browser. Reset it any time to start fresh.</p>
-            <button class="btn btn-danger btn-sm mt-8" data-action="reset-demo">Reset demo data</button>
+            <div class="card-head"><h3>Data &amp; storage</h3></div>
+            <p class="muted" style="font-size:13.5px">Live data is stored securely in your Firebase project (Firestore). Leads, activity, and the change history sync in real time across your team.</p>
           </div>
         </div>
       </div>`;

@@ -1,0 +1,42 @@
+rules_version = '2';
+// RWG CRM — Firestore security rules
+// Paste these into: Firebase Console → Firestore Database → Rules → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    // The owner account is allowed to bootstrap itself as an active admin on first login.
+    function isOwnerEmail() {
+      return signedIn() && request.auth.token.email != null
+        && request.auth.token.email.lower() == 'temperan.carlos@gmail.com';
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // First-login self-create: agents start pending; the owner email may create itself as active admin.
+      allow create: if signedIn() && request.auth.uid == uid && (
+        (request.resource.data.role == 'agent' && request.resource.data.status == 'pending')
+        || (isOwnerEmail() && request.resource.data.role == 'admin' && request.resource.data.status == 'active')
+      );
+      // Only the owner/admin can approve, deny, or change roles.
+      allow update, delete: if isAdmin();
+    }
+
+    match /leads/{id} {
+      allow read:   if signedIn() && (isAdmin() || resource.data.assignedTo == request.auth.uid);
+      allow create: if signedIn() && (isAdmin() || request.resource.data.assignedTo == request.auth.uid);
+      allow update: if signedIn() && (isAdmin() || resource.data.assignedTo == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /config/{doc} {
+      allow read:  if signedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

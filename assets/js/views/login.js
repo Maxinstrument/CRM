@@ -23,6 +23,10 @@ RWG.views.login = function () {
         <p class="gate-sub">Sign in to your CRM workspace</p>
         <div class="field-group"><input type="email" id="login-email" placeholder="Email address" autocomplete="username"></div>
         <div class="field-group"><input type="password" id="login-pass" placeholder="Password" autocomplete="current-password"></div>
+        <div class="gate-row" style="display:flex;align-items:center;justify-content:space-between;margin:-2px 0 14px">
+          <label class="remember-lbl"><input type="checkbox" id="login-remember" checked> Remember me</label>
+          <button type="button" class="linklike" data-action="forgot-pass">Forgot password?</button>
+        </div>
         <button class="btn btn-gold btn-block" type="submit">Sign in</button>
         <p class="gate-error" id="login-error"></p>
       </form>
@@ -39,14 +43,7 @@ RWG.views.login = function () {
         <div id="su-success" hidden class="gate-success">✓ Request sent! You'll be able to sign in once the owner approves your account.</div>
       </form>
 
-      <div class="demo-pills">
-        <div class="lbl">Demo quick-login</div>
-        <div class="row">
-          <button class="demo-pill" data-action="demo-login" data-id="u_admin">Owner / Admin<small>Carlos (full access)</small></button>
-          <button class="demo-pill" data-action="demo-login" data-id="u_maria">Agent<small>Maria Santos</small></button>
-        </div>
-      </div>
-      <p class="gate-note">Prototype preview · sample data only. Real Firebase login &amp; password security are wired up in Phase 5.</p>
+      <p class="gate-note">Resilient Wealth Group · secure access. New agents request an account; the owner approves it.</p>
     </div>
   </div>`;
 };

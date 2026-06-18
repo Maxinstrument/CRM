@@ -44,8 +44,11 @@ Firebase is the free Google service that will (a) handle secure logins and (b) b
 3. Start in **Production mode** → **Create**.
    *(It'll look "locked" for now — that's correct. I'll give you the exact security rules to paste in Part E once the code is ready.)*
 
-## Part E — (later, with me) Security rules
-After I send the rules text: **Firestore Database → Rules tab → paste → Publish.** I'll hand this to you when we wire up the code.
+## Part E — Publish the security rules ✅ (do this now — code is wired)
+These lock the database down: agents can only read/write **their own** leads; only the owner/admin can approve agents or see everything.
+1. Firebase Console → **Build → Firestore Database → Rules** tab.
+2. **Delete** whatever's there and **paste the entire contents of `firestore.rules`** (in this CRM folder).
+3. Click **Publish**.
 
 ---
 

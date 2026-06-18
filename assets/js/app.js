@@ -52,13 +52,26 @@ RWG.app = (function () {
 
   const state = {
     view: null, search: '', leadId: null, editing: false, importRows: null, importName: '', dragId: null,
+    viewAs: null,   // admin impersonation: the agent id being viewed (or null)
     agentFilter: newFilter(), adminFilter: newFilter(), selected: new Set(),
     adminCols: loadCols('rwg_cols_admin_v2', RWG.leadtable.defaultVisible(true)),
     agentCols: loadCols('rwg_cols_agent_v2', RWG.leadtable.defaultVisible(false))
   };
 
+  // "Effective" identity — usually the logged-in user, but an admin can view-as an agent.
+  function effectiveUser() {
+    const real = RWG.auth.currentUser();
+    if (state.viewAs && real && real.role === 'admin') { const a = D.user(state.viewAs); if (a) return a; }
+    return real;
+  }
+  function effectiveRole() {
+    const real = RWG.auth.currentUser();
+    if (state.viewAs && real && real.role === 'admin') return 'agent';
+    return real ? real.role : 'agent';
+  }
+
   // Which filter / column set is active depends on context: admin "All Leads" vs the agent's views.
-  const isAdminLeads = () => { const u = RWG.auth.currentUser(); return !!u && u.role === 'admin' && state.view === 'leads'; };
+  const isAdminLeads = () => effectiveRole() === 'admin' && state.view === 'leads';
   const currentFilter = () => isAdminLeads() ? state.adminFilter : state.agentFilter;
   const currentCols = () => isAdminLeads() ? state.adminCols : state.agentCols;
   const currentColsKey = () => isAdminLeads() ? 'rwg_cols_admin_v2' : 'rwg_cols_agent_v2';
@@ -131,36 +144,67 @@ RWG.app = (function () {
   const root = () => document.getElementById('root');
 
   // ────────────────────────── boot / routing
+  let _dataReady = false;
   function boot() {
-    D.init();
+    root().innerHTML = bootScreen();
+    if (!RWG.fb) { root().innerHTML = bootScreen('Couldn’t reach Firebase — check your connection and refresh.'); return; }
+    RWG.auth.init(onAuthChange);
+  }
+  function onAuthChange() {
+    const u = RWG.auth.currentUser();
+    if (!u || u.status !== 'active') { _dataReady = false; D.teardown(); render(); return; }
+    if (!_dataReady) { _dataReady = true; D.init(u, render); }   // render() re-fires on each Firestore snapshot
     render();
   }
-
+  function bootScreen(msg) {
+    return `<div id="gate"><div class="gate-card" style="text-align:center">
+      <img class="gate-logo" src="assets/img/logo.png" alt="Resilient Wealth Group">
+      <p class="gate-brand">Resilient Wealth Group</p>
+      <p class="gate-motto">Wealth, Conducted with Purpose</p>
+      <p class="muted" style="margin-top:18px">${U.esc(msg || 'Loading…')}</p></div></div>`;
+  }
+  function pendingScreen(u) {
+    return `<div id="gate"><div class="gate-card" style="text-align:center">
+      <img class="gate-logo" src="assets/img/logo.png" alt="Resilient Wealth Group">
+      <p class="gate-brand">Resilient Wealth Group</p>
+      <p class="gate-motto">Wealth, Conducted with Purpose</p>
+      <p class="gate-title" style="margin-top:18px">Account pending approval</p>
+      <p class="gate-sub">Thanks, ${U.esc((u.name || '').split(' ')[0])}! Your account is awaiting the owner's approval — you'll have access the moment it's approved.</p>
+      <button class="btn btn-ghost btn-block" data-action="logout">Sign out</button></div></div>`;
+  }
   function render() {
-    const user = RWG.auth.currentUser();
+    const real = RWG.auth.currentUser();
     closeDrawer();
-    if (!user) { root().innerHTML = RWG.views.login(); document.body.classList.remove('in-app'); return; }
-    if (!state.view) state.view = (user.role === 'admin') ? 'dashboard' : 'board';
-    renderShell(user);
+    if (!real) { root().innerHTML = RWG.views.login(); document.body.classList.remove('in-app'); return; }
+    if (real.status !== 'active') { root().innerHTML = pendingScreen(real); document.body.classList.remove('in-app'); return; }
+    if (real.role !== 'admin') state.viewAs = null;   // only admins may impersonate
+    if (!state.view) state.view = (effectiveRole() === 'admin') ? 'dashboard' : 'board';
+    renderShell();
   }
 
-  function renderShell(user) {
-    const nav = NAV[user.role] || NAV.agent;
+  function renderShell() {
+    const user = effectiveUser();
+    const role = effectiveRole();
+    const impersonating = !!state.viewAs;
+    const nav = NAV[role] || NAV.agent;
     const navHtml = nav.map(n => {
       const badge = n.badge ? n.badge() : 0;
       return `<button class="nav-item ${state.view === n.view ? 'active' : ''}" data-action="nav" data-view="${n.view}">
         ${ICONS[n.icon] || ''}<span>${n.label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
     }).join('');
+    const banner = impersonating
+      ? `<div class="viewas-banner">👁 Viewing as <b>${U.esc(user.name)}</b> — you're seeing their agent cockpit.<button class="btn btn-sm" data-action="exit-view-as">Exit agent view</button></div>`
+      : '';
 
     root().innerHTML = `
       <div id="app" class="show">
         <aside class="sidebar" id="sidebar">
           <div class="side-brand"><img src="assets/img/logo.png" alt="RWG"><div class="t">Resilient Wealth<small>Wealth, Conducted with Purpose</small></div></div>
-          <div class="nav-label">${user.role === 'admin' ? 'Owner' : 'Agent'}</div>
+          <div class="nav-label">${role === 'admin' ? 'Owner' : (impersonating ? 'Viewing as agent' : 'Agent')}</div>
           ${navHtml}
           <div class="spacer"></div>
           <button class="nav-item" data-action="logout">${ICONS.logout}<span>Sign out</span></button>
-          <div class="side-foot">RWG CRM · Prototype</div>
+          <div class="side-foot">RWG CRM</div>
         </aside>
         <header class="topbar">
           <button class="icon-btn menu-toggle" data-action="toggle-menu">☰</button>
@@ -168,9 +212,9 @@ RWG.app = (function () {
           <div class="topbar-spacer"></div>
           <div class="topbar-search">${ICONS.search}<input id="global-search" type="search" placeholder="Search leads…" value="${U.esc(state.search)}"></div>
           <button class="btn btn-gold btn-sm" data-action="add-lead" style="white-space:nowrap">＋ New Lead</button>
-          <div class="user-chip">${U.avatar(user, 32)}<div class="meta"><div class="nm">${U.esc(user.name)}</div><div class="rl">${user.role === 'admin' ? 'Owner' : 'Agent'}</div></div></div>
+          <div class="user-chip">${U.avatar(user, 32)}<div class="meta"><div class="nm">${U.esc(user.name)}</div><div class="rl">${impersonating ? 'Agent (view)' : (role === 'admin' ? 'Owner' : 'Agent')}</div></div></div>
         </header>
-        <main class="main"><div id="main-content"></div></main>
+        <main class="main">${banner}<div id="main-content"></div></main>
       </div>
       <div id="drawer-mount"></div>
       <div id="modal-mount"></div>`;
@@ -184,11 +228,12 @@ RWG.app = (function () {
   }
 
   function renderMain() {
-    const user = RWG.auth.currentUser();
-    if (!user) return render();
+    const real = RWG.auth.currentUser();
+    if (!real) return render();
+    const user = effectiveUser(), role = effectiveRole();
     setMeta();
-    const ctx = { search: state.search, isAdmin: user.role === 'admin', filter: currentFilter(), columns: currentCols(), selected: state.selected };
-    const html = (user.role === 'admin')
+    const ctx = { search: state.search, isAdmin: role === 'admin', filter: currentFilter(), columns: currentCols(), selected: state.selected };
+    const html = (role === 'admin')
       ? RWG.views.admin.render(state.view, user, ctx)
       : RWG.views.agent.render(state.view, user, ctx);
     const c = $('#main-content');
@@ -285,6 +330,35 @@ RWG.app = (function () {
     U.toast('Lead added', true);
   }
 
+  function buildEditUserModal(userId) {
+    const u = D.user(userId); if (!u) return '';
+    const isOwner = (u.email || '').toLowerCase() === (RWG.OWNER_EMAIL || '').toLowerCase();
+    return `
+    <div class="scrim" data-action="close-modal"></div>
+    <div class="modal-card" role="dialog" aria-label="Edit team member">
+      <div class="modal-head"><h2>Edit team member</h2><p>Update their name or send a password-reset link.</p></div>
+      <div class="modal-body">
+        <div class="field-group"><label class="lbl">Name</label><input id="eu-name" type="text" value="${U.esc(u.name || '')}"></div>
+        <div class="field-group"><label class="lbl">Login email</label>
+          <input type="email" value="${U.esc(u.email || '')}" disabled>
+          <div class="cell-sub mt-8">The login email is their sign-in credential and can't be changed from here. To change it, they update it themselves, or remove this account and have them re-register with the new email${isOwner ? ' (this is the owner account)' : ''}.</div></div>
+        <div class="field-group"><label class="lbl">Password</label>
+          <button class="btn btn-ghost btn-sm" data-action="admin-reset-pass" data-email="${U.esc(u.email || '')}">✉ Send password-reset link</button>
+          <div class="cell-sub mt-8">Emails them a secure link to set a new password. (Admins can't directly set someone's password.)</div></div>
+        <p class="gate-error" id="eu-err"></p>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-quiet" data-action="close-modal">Cancel</button>
+        <button class="btn btn-gold" data-action="save-user" data-id="${u.id}">Save</button>
+      </div>
+    </div>`;
+  }
+  function saveUser(id) {
+    const name = $('#eu-name') ? $('#eu-name').value.trim() : '';
+    if (!name) { const e = $('#eu-err'); if (e) e.textContent = 'Name cannot be empty.'; return; }
+    D.setUserName(id, name); closeModal(); renderMain(); U.toast('Saved', true);
+  }
+
   function saveLeadEdits(id) {
     const updates = {};
     D.EDITABLE_FIELDS.forEach(f => { const el = $('#edit-' + f.key); if (el) updates[f.key] = el.value; });
@@ -340,17 +414,18 @@ RWG.app = (function () {
   }
 
   // ────────────────────────── auth forms
-  function doLogin(form) {
-    const r = RWG.auth.login($('#login-email').value, $('#login-pass').value);
-    if (!r.ok) { $('#login-error').textContent = r.error; return; }
-    state.view = null; render();
+  async function doLogin(form) {
+    const err = $('#login-error'); if (err) err.textContent = 'Signing in…';
+    const remember = $('#login-remember') ? $('#login-remember').checked : true;
+    const r = await RWG.auth.login($('#login-email').value, $('#login-pass').value, remember);
+    if (!r.ok && err) err.textContent = r.error;   // success → onAuthChange renders the app
   }
-  function doSignup(form) {
-    const r = RWG.auth.signup({ name: $('#su-name').value, email: $('#su-email').value, password: $('#su-pass').value });
-    if (!r.ok) { $('#su-error').textContent = r.error; return; }
-    $('#su-error').textContent = '';
-    form.querySelectorAll('input').forEach(i => i.value = '');
-    $('#su-success').hidden = false;
+  async function doSignup(form) {
+    const su = $('#su-error'); if (su) su.textContent = 'Creating your account…';
+    const r = await RWG.auth.signup({ name: $('#su-name').value, email: $('#su-email').value, password: $('#su-pass').value });
+    if (!r.ok) { if (su) su.textContent = r.error; return; }
+    if (su) su.textContent = '';
+    const ok = $('#su-success'); if (ok) ok.hidden = false;   // auto-signed-in → pending screen appears
   }
   function gateTab(tab) {
     document.querySelectorAll('.gate-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
@@ -504,8 +579,18 @@ RWG.app = (function () {
   function handleAction(a, el, e) {
     switch (a) {
       case 'gate-tab': gateTab(el.dataset.tab); break;
-      case 'demo-login': RWG.auth.loginAs(el.dataset.id); state.view = null; render(); break;
-      case 'logout': RWG.auth.logout(); state.view = null; render(); break;
+      case 'forgot-pass': {
+        const email = ($('#login-email') ? $('#login-email').value : '').trim();
+        const err = $('#login-error');
+        if (!email) { if (err) err.textContent = 'Enter your email above, then click “Forgot password?”'; break; }
+        if (err) err.textContent = 'Sending reset link…';
+        RWG.auth.resetPassword(email).then(r => {
+          if (r.ok) { if (err) err.textContent = ''; U.toast('Password reset link sent — check your email', true); }
+          else if (err) err.textContent = r.error;
+        });
+        break;
+      }
+      case 'logout': state.view = null; RWG.auth.logout(); break;   // onAuthChange re-renders
       case 'nav': nav(el.dataset.view); break;
       case 'toggle-menu': { const sb = $('#sidebar'); if (sb) sb.classList.toggle('open'); break; }
       case 'open-lead': openLead(el.dataset.id); break;
@@ -572,6 +657,63 @@ RWG.app = (function () {
         state.selected.clear(); renderMain(); break;
       }
       case 'bulk-clear': state.selected.clear(); renderMain(); break;
+      case 'bulk-delete': {
+        if (!RWG.auth.isAdmin()) break;
+        const ids = Array.from(state.selected);
+        if (!ids.length) break;
+        if (confirm(`Permanently delete ${ids.length} lead${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) {
+          ids.forEach(id => D.deleteLead(id));
+          state.selected.clear(); renderMain();
+          U.toast(`Deleted ${ids.length} lead${ids.length > 1 ? 's' : ''}`);
+        }
+        break;
+      }
+      case 'delete-lead': {
+        if (!RWG.auth.isAdmin()) break;
+        const id = el.dataset.id, l = D.lead(id);
+        if (confirm(`Permanently delete ${l ? D.fullName(l) : 'this lead'}? This cannot be undone.`)) {
+          D.deleteLead(id); closeDrawer(); renderMain(); U.toast('Lead deleted');
+        }
+        break;
+      }
+      case 'set-role': {
+        if (!RWG.auth.isAdmin()) break;
+        const me = RWG.auth.currentUser();
+        if (el.dataset.id === me.id) break;   // can't change your own role
+        D.setUserRole(el.dataset.id, el.dataset.role);
+        U.toast(el.dataset.role === 'admin' ? 'Promoted to admin' : 'Changed to agent', true);
+        renderMain();
+        break;
+      }
+      case 'edit-user': if (RWG.auth.isAdmin()) openModal(buildEditUserModal(el.dataset.id)); break;
+      case 'save-user': if (RWG.auth.isAdmin()) saveUser(el.dataset.id); break;
+      case 'admin-reset-pass': {
+        if (!RWG.auth.isAdmin()) break;
+        const email = el.dataset.email;
+        RWG.auth.resetPassword(email).then(r => U.toast(r.ok ? ('Reset link sent to ' + email) : r.error, r.ok));
+        break;
+      }
+      case 'remove-user': {
+        if (!RWG.auth.isAdmin()) break;
+        const me = RWG.auth.currentUser(), u = D.user(el.dataset.id);
+        if (el.dataset.id === me.id) break;
+        if (u && (u.email || '').toLowerCase() === (RWG.OWNER_EMAIL || '').toLowerCase()) { U.toast('The owner account can’t be removed'); break; }
+        if (confirm(`Remove ${u ? u.name : 'this person'}? They lose access immediately. Any leads still assigned to them stay in the system — reassign them from All Leads (filter Owner).`)) {
+          D.removeUser(el.dataset.id); U.toast('Removed from the team'); renderMain();
+        }
+        break;
+      }
+      case 'view-as': {
+        if (!RWG.auth.isAdmin()) break;
+        state.viewAs = el.dataset.id; state.view = 'board'; state.search = ''; clearSelection();
+        render();
+        break;
+      }
+      case 'exit-view-as': {
+        state.viewAs = null; state.view = 'dashboard'; state.search = ''; clearSelection();
+        render();
+        break;
+      }
       case 'export-leads': exportLeads(); break;
       case 'approve-user': D.approveUser(el.dataset.id); U.toast('Agent approved', true); renderShell(RWG.auth.currentUser()); break;
       case 'deny-user': D.denyUser(el.dataset.id); U.toast('Request removed'); renderShell(RWG.auth.currentUser()); break;
@@ -581,7 +723,6 @@ RWG.app = (function () {
       case 'cancel-import': state.importRows = null; $('#upload-preview').innerHTML = ''; break;
       case 'save-scoring': saveScoring(); break;
       case 'reset-scoring': D.setScoringConfig({}); U.toast('Scoring reset to defaults'); renderMain(); break;
-      case 'reset-demo': if (confirm('Reset all demo data back to the original sample set?')) { D.reset(); state.view = null; render(); } break;
     }
   }
 
@@ -616,8 +757,7 @@ RWG.app = (function () {
       if (e.target.id === 'global-search') {
         state.search = e.target.value;
         clearSelection();
-        const user = RWG.auth.currentUser();
-        const want = user.role === 'admin' ? 'leads' : 'mylist';
+        const want = effectiveRole() === 'admin' ? 'leads' : 'mylist';
         if (state.view !== want) { state.view = want; setActiveNav(); setMeta(); }
         renderMain();
         const s = $('#global-search'); if (s) { s.focus(); }
