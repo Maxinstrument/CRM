@@ -108,7 +108,7 @@ RWG.views.admin = (function () {
     const filtered = LT.applyFilter(all, f);
     return LT.filterBar(all, f, filtered.length, { showOwner: true, columns: cols, canExport: true })
       + (selected.size ? bulkBar(selected.size) : '')
-      + `<div id="leads-body">${LT.table(filtered, f, { showOwner: true, columns: cols, selectable: true, selected: selected, empty: 'Try a different filter, or hit Clear to see every lead.' })}</div>`;
+      + `<div id="leads-body">${LT.table(filtered, f, { showOwner: true, columns: cols, selectable: true, selected: selected, allLeads: all, empty: 'Try a different filter, or Clear all.' })}</div>`;
   }
 
   function agents() {

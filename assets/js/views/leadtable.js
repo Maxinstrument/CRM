@@ -1,8 +1,11 @@
 /* ============================================================
-   RWG CRM — Shared leads filter + sort toolbar + table
-   Used by BOTH the agent cockpit (My Leads / My Board) and the
-   admin "All Leads" view. `showOwner` adds the Owner column +
-   the per-agent owner filter for admins.
+   RWG CRM — Shared leads table with Excel-style AutoFilter
+   Used by admin "All Leads" and the agent "My Leads" table; the
+   agent board reuses the same filter model via a compact bar.
+
+   Filter model:  { colFilters: { <col>:[values] }, sortKey, sortDir }
+   (plus `search` merged in by the controller). Every column filters
+   by a value checklist; sort lives in each column's header menu.
    ============================================================ */
 window.RWG = window.RWG || {};
 RWG.leadtable = (function () {
@@ -11,35 +14,48 @@ RWG.leadtable = (function () {
   const lastTouch = (l) => (l.activities && l.activities.length) ? l.activities[l.activities.length - 1].at : (l.createdAt || 0);
   const tierRank = (l) => ({ GOLD: 4, HIGH: 3, MEDIUM: 2, LOW: 1 })[l._score.tier] || 0;
   const dispoIdx = (l) => { const i = D.DISPOSITIONS.indexOf(l.disposition || ''); return i < 0 ? 999 : i; };
-  const ownerName = (l) => l.assignedTo ? ((D.user(l.assignedTo) || {}).name || '') : '~~~';   // unassigned sorts last
+  const ownerName = (l) => l.assignedTo ? ((D.user(l.assignedTo) || {}).name || '') : '~~~';
 
   function defaultFilter() {
-    return { tiers: [], owner: '', stages: [], dispositions: [], lists: [], sortKey: 'score', sortDir: 'desc' };
+    return { colFilters: {}, sortKey: 'score', sortDir: 'desc' };
   }
 
-  // Each column drives header, comparator (ascending), and the body cell.
+  const NUMERIC = ['score', 'yos', 'afc', 'attempts'];
+
+  // Each column drives: header label, sort comparator, body cell, and (if filterable) a filter value + label.
   function columnDefs() {
     return {
-      name:  { label: 'Lead', dir: 'asc', cmp: (a, b) => D.fullName(a).localeCompare(D.fullName(b)),
+      name:  { label: 'Lead', dir: 'asc', filterable: false, cmp: (a, b) => D.fullName(a).localeCompare(D.fullName(b)),
                cell: (l) => `<div class="cell-name">${U.esc(D.fullName(l))}</div><div class="cell-sub">${U.esc(l.employer || '')}</div>` },
-      tier:  { label: 'Tier', dir: 'desc', cmp: (a, b) => tierRank(a) - tierRank(b), cell: (l) => U.tierChip(l._score) },
-      score: { label: 'Score', dir: 'desc', cmp: (a, b) => a._score.score - b._score.score, cell: (l) => U.scoreBar(l._score) },
-      owner: { label: 'Owner', dir: 'asc', cmp: (a, b) => ownerName(a).localeCompare(ownerName(b)),
+      tier:  { label: 'Tier', dir: 'desc', filterable: true, fval: (l) => l._score.tier,
+               cmp: (a, b) => tierRank(a) - tierRank(b), cell: (l) => U.tierChip(l._score) },
+      score: { label: 'Score', dir: 'desc', filterable: true, fval: (l) => String(l._score.score),
+               cmp: (a, b) => a._score.score - b._score.score, cell: (l) => U.scoreBar(l._score) },
+      owner: { label: 'Owner', dir: 'asc', filterable: true, fval: (l) => l.assignedTo ? ((D.user(l.assignedTo) || {}).name || '—') : 'Unassigned',
+               cmp: (a, b) => ownerName(a).localeCompare(ownerName(b)),
                cell: (l) => { const o = D.user(l.assignedTo); return o ? `<span class="flex" style="gap:7px">${U.avatar(o, 24)}<span class="cell-sub" style="color:var(--ink)">${U.esc(o.name.split(' ')[0])}</span></span>` : '<span class="pill-soft">Unassigned</span>'; } },
-      stage: { label: 'Stage', dir: 'asc', cmp: (a, b) => (A.STAGE_RANK[a.stage] || 0) - (A.STAGE_RANK[b.stage] || 0), cell: (l) => U.stageChip(l.stage) },
-      disposition: { label: 'Disposition', dir: 'asc', cmp: (a, b) => dispoIdx(a) - dispoIdx(b),
-               cell: (l) => l.disposition ? `<span class="pill-soft">${U.esc(l.disposition)}</span>` : '<span class="cell-sub">—</span>' },
-      plan:  { label: 'Plan', dir: 'asc', cmp: (a, b) => RWG.scoring.normPlan(a.planType).localeCompare(RWG.scoring.normPlan(b.planType)), cell: (l) => U.esc(RWG.scoring.normPlan(l.planType)) },
-      yos:   { label: 'YOS / Age', dir: 'desc', cmp: (a, b) => (a.yos || 0) - (b.yos || 0), tdClass: 'num', cell: (l) => `${l.yos ?? '—'} / ${l.age ?? '—'}` },
-      afc:   { label: 'AFC', dir: 'desc', cmp: (a, b) => (a.afc || 0) - (b.afc || 0), cell: (l) => U.moneyK(l.afc) },
-      attempts: { label: 'Att.', dir: 'asc', cmp: (a, b) => (a.attempts || 0) - (b.attempts || 0), tdClass: 'num', cell: (l) => (l.attempts || 0) },
-      touch: { label: 'Last touch', dir: 'desc', cmp: (a, b) => lastTouch(a) - lastTouch(b),
+      stage: { label: 'Stage', dir: 'asc', filterable: true, fval: (l) => l.stage,
+               cmp: (a, b) => (A.STAGE_RANK[a.stage] || 0) - (A.STAGE_RANK[b.stage] || 0), cell: (l) => U.stageChip(l.stage) },
+      disposition: { label: 'Disposition', dir: 'asc', filterable: true, fval: (l) => l.disposition || '(none)',
+               cmp: (a, b) => dispoIdx(a) - dispoIdx(b), cell: (l) => l.disposition ? `<span class="pill-soft">${U.esc(l.disposition)}</span>` : '<span class="cell-sub">—</span>' },
+      plan:  { label: 'Plan', dir: 'asc', filterable: true, fval: (l) => RWG.scoring.normPlan(l.planType),
+               cmp: (a, b) => RWG.scoring.normPlan(a.planType).localeCompare(RWG.scoring.normPlan(b.planType)), cell: (l) => U.esc(RWG.scoring.normPlan(l.planType)) },
+      list:  { label: 'List', dir: 'asc', filterable: true, fval: (l) => l.listName || '(none)',
+               cmp: (a, b) => (a.listName || '').localeCompare(b.listName || ''), cell: (l) => `<span class="cell-sub" style="color:var(--ink)">${U.esc(l.listName || '—')}</span>` },
+      yos:   { label: 'YOS / Age', dir: 'desc', tdClass: 'num', filterable: true, fval: (l) => l.yos == null ? '(none)' : String(l.yos),
+               cmp: (a, b) => (a.yos || 0) - (b.yos || 0), cell: (l) => `${l.yos ?? '—'} / ${l.age ?? '—'}` },
+      afc:   { label: 'AFC', dir: 'desc', filterable: true, fval: (l) => l.afc == null ? '(none)' : String(l.afc),
+               flabel: (v) => v === '(none)' ? '(none)' : U.moneyK(Number(v)),
+               cmp: (a, b) => (a.afc || 0) - (b.afc || 0), cell: (l) => U.moneyK(l.afc) },
+      attempts: { label: 'Att.', dir: 'asc', tdClass: 'num', filterable: true, fval: (l) => String(l.attempts || 0),
+               cmp: (a, b) => (a.attempts || 0) - (b.attempts || 0), cell: (l) => (l.attempts || 0) },
+      touch: { label: 'Last touch', dir: 'desc', filterable: false, cmp: (a, b) => lastTouch(a) - lastTouch(b),
                cell: (l) => `<span class="cell-sub">${l.activities && l.activities.length ? U.fmtRelative(l.activities[l.activities.length - 1].at) : '—'}</span>` }
     };
   }
 
   function columnOrder(showOwner) {
-    const base = ['name', 'tier', 'score', 'stage', 'disposition', 'plan', 'yos', 'afc', 'attempts', 'touch'];
+    const base = ['name', 'tier', 'score', 'stage', 'disposition', 'plan', 'list', 'yos', 'afc', 'attempts', 'touch'];
     if (showOwner) base.splice(3, 0, 'owner');   // Owner right after Score
     return base;
   }
@@ -48,14 +64,31 @@ RWG.leadtable = (function () {
 
   const CMP = (() => { const defs = columnDefs(), m = {}; Object.keys(defs).forEach(k => m[k] = defs[k].cmp); m.appt = (a, b) => (a.apptDate || Infinity) - (b.apptDate || Infinity); return m; })();
 
+  // Distinct values present for a column, sorted sensibly (used to build the checklist).
+  function distinctValues(leads, key) {
+    const defs = columnDefs(), fv = defs[key].fval;
+    if (!fv) return [];
+    const set = new Set();
+    leads.forEach(l => set.add(fv(l)));
+    let vals = Array.from(set);
+    const none = (v) => v === '(none)';
+    if (key === 'tier') { const r = { GOLD: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }; vals.sort((a, b) => (r[a] ?? 9) - (r[b] ?? 9)); }
+    else if (key === 'stage') vals.sort((a, b) => (A.STAGE_RANK[a] ?? 99) - (A.STAGE_RANK[b] ?? 99));
+    else if (key === 'disposition') vals.sort((a, b) => { const ia = D.DISPOSITIONS.indexOf(a), ib = D.DISPOSITIONS.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib); });
+    else if (NUMERIC.includes(key)) vals.sort((a, b) => (none(a) ? Infinity : +a) - (none(b) ? Infinity : +b));
+    else if (key === 'list') { const rec = listRecency(leads); vals.sort((a, b) => (rec[b] || 0) - (rec[a] || 0)); }
+    else vals.sort((a, b) => String(a).localeCompare(String(b)));
+    return vals;
+  }
+  function listRecency(leads) { const m = {}; leads.forEach(l => { const k = l.listName || '(none)'; m[k] = Math.max(m[k] || 0, l.createdAt || 0); }); return m; }
+
   function applyFilter(leads, f) {
     let out = leads.slice();
-    if (f.tiers && f.tiers.length) out = out.filter(l => f.tiers.includes(l._score.tier));
-    if (f.owner === 'unassigned') out = out.filter(l => !l.assignedTo);
-    else if (f.owner) out = out.filter(l => l.assignedTo === f.owner);
-    if (f.stages && f.stages.length) out = out.filter(l => f.stages.includes(l.stage));
-    if (f.dispositions && f.dispositions.length) out = out.filter(l => f.dispositions.includes(l.disposition));
-    if (f.lists && f.lists.length) out = out.filter(l => f.lists.includes(l.listName));
+    const cf = f.colFilters || {}, defs = columnDefs();
+    Object.keys(cf).forEach(key => {
+      const sel = cf[key], def = defs[key];
+      if (sel && sel.length && def && def.fval) out = out.filter(l => sel.includes(def.fval(l)));
+    });
     if (f.search) {
       const q = f.search.toLowerCase();
       out = out.filter(l => (D.fullName(l) + ' ' + (l.employer || '') + ' ' + (l.phone || '')).toLowerCase().includes(q));
@@ -65,55 +98,89 @@ RWG.leadtable = (function () {
     return out;
   }
 
-  const distinctLists = (leads) => Array.from(new Set(leads.map(l => l.listName).filter(Boolean)));
+  // The AutoFilter menu for a column (sort + search + value checklist). Reused in headers and the board bar.
+  function filterMenu(key, allLeads, selected) {
+    const defs = columnDefs(), def = defs[key], flabel = def.flabel || ((v) => v);
+    const numeric = NUMERIC.includes(key);
+    const rows = distinctValues(allLeads, key).map(v =>
+      `<label class="pop-row"><input type="checkbox" data-colfilter="${key}" data-val="${U.esc(v)}" ${selected.includes(v) ? 'checked' : ''}> ${U.esc(String(flabel(v)))}</label>`).join('');
+    return `<div class="pop-panel" hidden>
+      <button class="pop-sort" data-action="popsort" data-col="${key}" data-dir="asc">↑ Sort ${numeric ? 'low → high' : 'A → Z'}</button>
+      <button class="pop-sort" data-action="popsort" data-col="${key}" data-dir="desc">↓ Sort ${numeric ? 'high → low' : 'Z → A'}</button>
+      <div class="pop-sep"></div>
+      <input class="pop-search" type="search" placeholder="Search ${U.esc(def.label)}…">
+      <div class="pop-actions"><button data-action="colfilter-all" data-col="${key}">Select all</button><button data-action="colfilter-clear" data-col="${key}">Clear</button></div>
+      <div class="pop-list">${rows || '<div class="muted" style="padding:8px;font-size:12.5px">No values</div>'}</div>
+    </div>`;
+  }
+
+  // Active-filter summary chips (shown in the bar; each clears its column)
+  function summaryChips(f) {
+    const cf = f.colFilters || {}, defs = columnDefs();
+    return Object.keys(cf).filter(k => cf[k] && cf[k].length).map(k => {
+      const def = defs[k] || { label: k }, flabel = def.flabel || ((v) => v), vals = cf[k];
+      const txt = vals.length === 1 ? flabel(vals[0]) : vals.length + ' selected';
+      return `<span class="filter-chip">${U.esc(def.label)}: <b>${U.esc(String(txt))}</b><button class="chip-x" data-action="colfilter-clear" data-col="${k}" title="Clear">✕</button></span>`;
+    }).join('');
+  }
+
+  // Body rows only (so the controller can refresh rows without rebuilding the headers/popovers)
+  function bodyFor(leads, opts) {
+    opts = opts || {};
+    const vis = opts.columns, defs = columnDefs();
+    const order = columnOrder(opts.showOwner).filter(k => k === 'name' || !vis || vis.includes(k));
+    const sel = !!opts.selectable, selected = opts.selected || new Set();
+    const colCount = order.length + (sel ? 1 : 0);
+    if (!leads.length) return `<tr class="no-rows"><td colspan="${colCount}"><div class="empty" style="padding:34px 10px"><div class="ec">🔍</div><h3>No leads match</h3><p>${U.esc(opts.empty || 'Adjust a column filter, or Clear all.')}</p></div></td></tr>`;
+    return leads.map(l => {
+      const isSel = sel && selected.has(l.id);
+      const selTd = sel ? `<td class="sel-cell"><input type="checkbox" data-sel="${l.id}" ${isSel ? 'checked' : ''}></td>` : '';
+      return `<tr class="${isSel ? 'row-sel' : ''}" data-action="open-lead" data-id="${l.id}">${selTd}${order.map(key => { const c = defs[key]; return `<td class="${c.tdClass || ''}">${c.cell(l)}</td>`; }).join('')}</tr>`;
+    }).join('');
+  }
+
+  function table(leads, f, opts) {
+    opts = opts || {};
+    const vis = opts.columns, defs = columnDefs();
+    const order = columnOrder(opts.showOwner).filter(k => k === 'name' || !vis || vis.includes(k));
+    const sel = !!opts.selectable, selected = opts.selected || new Set();
+    const cf = f.colFilters || {}, allLeads = opts.allLeads || leads;
+    const allOn = sel && leads.length && leads.every(l => selected.has(l.id));
+    const selTh = sel ? `<th class="sel-th"><input type="checkbox" data-selall ${allOn ? 'checked' : ''}></th>` : '';
+    const head = `<thead><tr>${selTh}${order.map(key => {
+      const c = defs[key], activeCol = key === f.sortKey;
+      const arr = activeCol ? (f.sortDir === 'asc' ? ' <span class="arrow">▲</span>' : ' <span class="arrow">▼</span>') : '';
+      let fb = '';
+      if (c.filterable) { const has = (cf[key] || []).length > 0; fb = `<button class="th-filter ${has ? 'on' : ''}" data-action="popmenu" data-col="${key}" type="button" aria-label="Filter ${U.esc(c.label)}">▾</button>${filterMenu(key, allLeads, cf[key] || [])}`; }
+      return `<th class="pop-wrap th-cell ${activeCol ? 'sorted' : ''}"><span class="th-label" data-sort="${key}" data-dir="${c.dir}">${c.label}${arr}</span>${fb}</th>`;
+    }).join('')}</tr></thead>`;
+    return `<div class="table-wrap"><table class="data">${head}<tbody>${bodyFor(leads, opts)}</tbody></table></div>`;
+  }
 
   function filterBar(allLeads, f, count, opts) {
     opts = opts || {};
-    const tierBtn = (t) => {
-      const m = RWG.scoring.tierMeta[t], on = f.tiers.includes(t);
-      return `<button class="fbar-tier ${on ? 'on' : ''}" data-action="flt-tier" data-tier="${t}"><span class="tier-dot ${m.dot}"></span>${m.label}</button>`;
-    };
-    const lists = distinctLists(allLeads);
-    const active = f.tiers.length || f.owner || (f.stages && f.stages.length) || (f.dispositions && f.dispositions.length) || (f.lists && f.lists.length) || f.sortKey !== 'score' || f.sortDir !== 'desc' || f.search;
+    const cf = f.colFilters || {};
+    const chips = summaryChips(f);
+    const active = Object.keys(cf).some(k => cf[k] && cf[k].length) || f.search || f.sortKey !== 'score' || f.sortDir !== 'desc';
+    const clearBtn = `<button class="btn btn-quiet btn-sm fbar-clear" data-action="flt-clear" ${active ? '' : 'style="display:none"'}>✕ Clear all</button>`;
 
-    // multi-select checklist dropdown (Stage / Disposition / List)
-    const msDropdown = (label, field, options, selected) => {
-      const n = selected.length;
-      const summary = n === 0 ? 'All' : (n === 1 ? selected[0] : n + ' selected');
-      return `<div class="pop-wrap">
-        <button class="fbar-select ms-btn ${n ? 'ms-on' : ''}" data-action="popmenu" data-field="${field}" type="button">${label}: <b class="ms-sum">${U.esc(summary)}</b></button>
-        <div class="pop-panel" hidden>
-          <div class="pop-h">${label}</div>
-          ${options.map(o => `<label class="pop-row"><input type="checkbox" data-msfilter="${field}" data-val="${U.esc(o)}" ${selected.includes(o) ? 'checked' : ''}> ${U.esc(o)}</label>`).join('')}
-          <div class="pop-f"><button class="btn btn-quiet btn-sm" data-action="ms-clear" data-field="${field}">Clear</button></div>
+    if (opts.onBoard) {
+      const tierChips = ['GOLD', 'HIGH', 'MEDIUM', 'LOW'].map(t => {
+        const m = RWG.scoring.tierMeta[t], on = (cf.tier || []).includes(t);
+        return `<button class="fbar-tier ${on ? 'on' : ''}" data-action="flt-tier" data-tier="${t}"><span class="tier-dot ${m.dot}"></span>${m.label}</button>`;
+      }).join('');
+      return `<div class="filterbar">
+        <div class="fbar-top">
+          <span class="fbar-label">Quality</span><div class="fbar-tiers">${tierChips}</div>
+          <span class="fbar-spacer"></span>${clearBtn}
         </div>
+        ${chips ? `<div class="fbar-bottom"><span class="fbar-label">Filters</span><div class="chip-row">${chips}</div></div>` : ''}
       </div>`;
-    };
-
-    const ownerSel = opts.showOwner ? `<select class="fbar-select" data-filter="owner">
-        <option value="">All owners</option><option value="unassigned" ${f.owner === 'unassigned' ? 'selected' : ''}>Unassigned</option>
-        ${D.agents().map(a => `<option value="${a.id}" ${f.owner === a.id ? 'selected' : ''}>${U.esc(a.name)}</option>`).join('')}</select>` : '';
-    const stageDd = opts.onBoard ? '' : msDropdown('Stage', 'stages', D.STAGES, f.stages || []);
-    const dispoDd = msDropdown('Disposition', 'dispositions', D.DISPOSITIONS, f.dispositions || []);
-    const listDd = lists.length ? msDropdown('List', 'lists', lists, f.lists || []) : '';
-
-    const presets = [
-      ['score:desc', 'Quality (high→low)'], ['attempts:asc', 'Fewest attempts'], ['attempts:desc', 'Most attempts'],
-      ['touch:asc', 'Not touched longest'], ['touch:desc', 'Recently touched'], ['appt:asc', 'Appointment soonest'],
-      ['afc:desc', 'AFC (high→low)'], ['name:asc', 'Name (A–Z)']
-    ];
-    const cur = `${f.sortKey}:${f.sortDir}`;
-    const isPreset = presets.some(p => p[0] === cur);
-    let sortOpts = presets.map(p => `<option value="${p[0]}" ${cur === p[0] ? 'selected' : ''}>${p[1]}</option>`).join('');
-    if (!isPreset) {
-      const defs = columnDefs(), col = defs[f.sortKey];
-      sortOpts = `<option value="${cur}" selected>Sorted: ${U.esc(col ? col.label : f.sortKey)} ${f.sortDir === 'asc' ? '↑' : '↓'}</option>` + sortOpts;
     }
-    const sortSel = `<label class="fbar-sortlbl">Sort</label><select class="fbar-select" data-filter="sortpreset">${sortOpts}</select>`;
 
-    // column chooser (table views only)
+    // table views: slim bar — active-filter summary + count + columns + export
     const visible = opts.columns;
-    const colBtn = opts.onBoard ? '' : (() => {
+    const colBtn = (() => {
       const defs = columnDefs();
       const items = columnOrder(opts.showOwner).map(k => {
         const on = !visible || visible.includes(k), locked = k === 'name';
@@ -128,13 +195,10 @@ RWG.leadtable = (function () {
 
     return `<div class="filterbar">
       <div class="fbar-top">
-        <span class="fbar-label">Quality</span>
-        <div class="fbar-tiers">${['GOLD', 'HIGH', 'MEDIUM', 'LOW'].map(tierBtn).join('')}</div>
-        <span class="fbar-sep"></span>
-        ${ownerSel}${stageDd}${dispoDd}${listDd}
-        ${sortSel}
+        <span class="fbar-label">Filters</span>
+        <div class="chip-row">${chips || '<span class="muted" style="font-size:13px">None — click a column ▾ to sort &amp; filter</span>'}</div>
         <span class="fbar-spacer"></span>
-        <button class="btn btn-quiet btn-sm fbar-clear" data-action="flt-clear" ${active ? '' : 'style="display:none"'}>✕ Clear</button>
+        ${clearBtn}
       </div>
       <div class="fbar-bottom">
         <span class="fbar-count">${count} of ${allLeads.length} lead${allLeads.length === 1 ? '' : 's'}</span>
@@ -143,36 +207,6 @@ RWG.leadtable = (function () {
         ${opts.canExport ? `<button class="btn btn-ghost btn-sm" data-action="export-leads" title="Export this view to CSV (opens in Excel)">⬇ Export</button>` : ''}
       </div>
     </div>`;
-  }
-
-  function table(leads, f, opts) {
-    opts = opts || {};
-    const vis = opts.columns;
-    const defs = columnDefs();
-    const order = columnOrder(opts.showOwner).filter(k => k === 'name' || !vis || vis.includes(k));
-    const sel = !!opts.selectable;
-    const selected = opts.selected || new Set();
-    const allOn = sel && leads.length && leads.every(l => selected.has(l.id));
-    const selTh = sel ? `<th class="sel-th"><input type="checkbox" data-selall ${allOn ? 'checked' : ''}></th>` : '';
-
-    const head = `<thead><tr>${selTh}${order.map(key => {
-      const c = defs[key], activeCol = key === f.sortKey;
-      const arr = activeCol ? (f.sortDir === 'asc' ? ' <span class="arrow">▲</span>' : ' <span class="arrow">▼</span>') : '';
-      return `<th data-sort="${key}" data-dir="${c.dir}" class="${activeCol ? 'sorted' : ''}">${c.label}${arr}</th>`;
-    }).join('')}</tr></thead>`;
-
-    if (!leads.length) return `<div class="table-wrap"><table class="data">${head}</table></div>
-      <div class="empty"><div class="ec">🔍</div><h3>No leads match</h3><p>${U.esc(opts.empty || '')}</p></div>`;
-
-    const rows = leads.map(l => {
-      const isSel = sel && selected.has(l.id);
-      const selTd = sel ? `<td class="sel-cell"><input type="checkbox" data-sel="${l.id}" ${isSel ? 'checked' : ''}></td>` : '';
-      return `<tr class="${isSel ? 'row-sel' : ''}" data-action="open-lead" data-id="${l.id}">${selTd}${order.map(key => {
-        const c = defs[key];
-        return `<td class="${c.tdClass || ''}">${c.cell(l)}</td>`;
-      }).join('')}</tr>`;
-    }).join('');
-    return `<div class="table-wrap"><table class="data">${head}<tbody>${rows}</tbody></table></div>`;
   }
 
   // ── CSV export (rich, action-ready columns — independent of which table columns are shown) ──
@@ -189,16 +223,12 @@ RWG.leadtable = (function () {
     ['Appointment', l => l.apptDate ? new Date(l.apptDate).toLocaleString('en-US') : ''],
     ['Lead List', l => l.listName], ['Top Reason', l => l._score.headline]
   ];
-  function csvCell(v) {
-    if (v == null) v = '';
-    v = String(v);
-    return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
-  }
+  function csvCell(v) { if (v == null) v = ''; v = String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   function toCSV(leads) {
     const header = EXPORT_COLS.map(c => csvCell(c[0])).join(',');
     const rows = leads.map(l => EXPORT_COLS.map(c => csvCell(c[1](l))).join(','));
     return [header].concat(rows).join('\r\n');
   }
 
-  return { defaultFilter, applyFilter, filterBar, table, defaultVisible, allColumns, toCSV };
+  return { defaultFilter, applyFilter, filterBar, table, bodyFor, summaryChips, distinctValues, defaultVisible, allColumns, toCSV };
 })();

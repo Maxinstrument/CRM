@@ -53,15 +53,15 @@ RWG.app = (function () {
   const state = {
     view: null, search: '', leadId: null, editing: false, importRows: null, importName: '', dragId: null,
     agentFilter: newFilter(), adminFilter: newFilter(), selected: new Set(),
-    adminCols: loadCols('rwg_cols_admin', RWG.leadtable.defaultVisible(true)),
-    agentCols: loadCols('rwg_cols_agent', RWG.leadtable.defaultVisible(false))
+    adminCols: loadCols('rwg_cols_admin_v2', RWG.leadtable.defaultVisible(true)),
+    agentCols: loadCols('rwg_cols_agent_v2', RWG.leadtable.defaultVisible(false))
   };
 
   // Which filter / column set is active depends on context: admin "All Leads" vs the agent's views.
   const isAdminLeads = () => { const u = RWG.auth.currentUser(); return !!u && u.role === 'admin' && state.view === 'leads'; };
   const currentFilter = () => isAdminLeads() ? state.adminFilter : state.agentFilter;
   const currentCols = () => isAdminLeads() ? state.adminCols : state.agentCols;
-  const currentColsKey = () => isAdminLeads() ? 'rwg_cols_admin' : 'rwg_cols_agent';
+  const currentColsKey = () => isAdminLeads() ? 'rwg_cols_admin_v2' : 'rwg_cols_agent_v2';
 
   // Leads + filter for whatever lead table is currently on screen
   function currentTableLeads() {
@@ -69,8 +69,9 @@ RWG.app = (function () {
     const adminLeads = isAdminLeads();
     const base = adminLeads ? D.leads() : D.leadsFor(u.id);
     const f = Object.assign(newFilter(), currentFilter(), { search: state.search });
-    return { adminLeads, f, total: base.length, filtered: RWG.leadtable.applyFilter(base, f) };
+    return { adminLeads, f, base, total: base.length, filtered: RWG.leadtable.applyFilter(base, f) };
   }
+  const tableOpts = (c) => ({ showOwner: c.adminLeads, columns: currentCols(), selectable: c.adminLeads, selected: state.selected, allLeads: c.base, empty: 'Try a different filter, or Clear all.' });
 
   // Position a fixed popover panel just under its trigger button, clamped to the viewport
   function positionPanel(btn, panel) {
@@ -83,26 +84,33 @@ RWG.app = (function () {
     panel.style.left = left + 'px';
   }
 
-  // Update count + multi-select button summaries + Clear visibility without re-rendering (keeps popovers open)
+  // Update count, summary chips, header funnels, board tier-chips + Clear visibility without re-rendering
   function updateFilterChrome() {
-    const c = currentTableLeads(), f = currentFilter();
+    const c = currentTableLeads(), f = currentFilter(), cf = f.colFilters || {};
     const cnt = document.querySelector('.fbar-count');
     if (cnt) cnt.textContent = `${c.filtered.length} of ${c.total} lead${c.total === 1 ? '' : 's'}`;
-    document.querySelectorAll('.ms-btn[data-field]').forEach(btn => {
-      const arr = f[btn.dataset.field] || [], sum = btn.querySelector('.ms-sum');
-      if (sum) sum.textContent = arr.length === 0 ? 'All' : (arr.length === 1 ? arr[0] : arr.length + ' selected');
-      btn.classList.toggle('ms-on', arr.length > 0);
-    });
-    const active = f.tiers.length || f.owner || (f.stages && f.stages.length) || (f.dispositions && f.dispositions.length) || (f.lists && f.lists.length) || f.sortKey !== 'score' || f.sortDir !== 'desc' || f.search;
-    const clr = document.querySelector('.fbar-clear');
-    if (clr) clr.style.display = active ? '' : 'none';
+    const chipRow = document.querySelector('.chip-row');
+    if (chipRow) chipRow.innerHTML = RWG.leadtable.summaryChips(f) || '<span class="muted" style="font-size:13px">None — click a column ▾ to sort &amp; filter</span>';
+    document.querySelectorAll('.th-filter[data-col]').forEach(b => b.classList.toggle('on', (cf[b.dataset.col] || []).length > 0));
+    document.querySelectorAll('.fbar-tier[data-tier]').forEach(b => b.classList.toggle('on', (cf.tier || []).includes(b.dataset.tier)));
+    const active = Object.keys(cf).some(k => cf[k] && cf[k].length) || f.search || f.sortKey !== 'score' || f.sortDir !== 'desc';
+    document.querySelectorAll('.fbar-clear').forEach(clr => clr.style.display = active ? '' : 'none');
   }
 
-  // Re-render only the table body (keeps the column-chooser popover open while toggling)
+  // Rebuild the whole table (headers + body) — used for column-chooser changes (its popover lives in the bar)
   function refreshLeadsBody() {
     const body = $('#leads-body'); if (!body) return;
     const c = currentTableLeads();
-    body.innerHTML = RWG.leadtable.table(c.filtered, c.f, { showOwner: c.adminLeads, columns: currentCols(), selectable: c.adminLeads, selected: state.selected, empty: 'Try a different filter, or hit Clear.' });
+    body.innerHTML = RWG.leadtable.table(c.filtered, c.f, tableOpts(c));
+    updateFilterChrome();
+  }
+  // Rebuild ONLY the rows — used for column-filter changes so the header's open popover survives
+  function refreshLeadsRows() {
+    const tbody = document.querySelector('#leads-body tbody');
+    if (!tbody) { refreshLeadsBody(); return; }
+    const c = currentTableLeads();
+    tbody.innerHTML = RWG.leadtable.bodyFor(c.filtered, tableOpts(c));
+    updateFilterChrome();
   }
 
   // Lightweight update of bulk-selection UI (avoids a full re-render so the agent dropdown keeps its value)
@@ -512,9 +520,11 @@ RWG.app = (function () {
       case 'toggle-appt': { const r = $('#appt-row'); if (r) r.hidden = !r.hidden; break; }
       case 'confirm-appt': confirmAppt(el.dataset.id); break;
       case 'graduate': graduate(el.dataset.id, el.dataset.stage); break;
-      case 'flt-tier': {
-        const t = el.dataset.tier, arr = currentFilter().tiers, i = arr.indexOf(t);
-        if (i >= 0) arr.splice(i, 1); else arr.push(t);
+      case 'flt-tier': {   // board quick-chips → colFilters.tier
+        const t = el.dataset.tier, f = currentFilter();
+        f.colFilters = f.colFilters || {}; const arr = f.colFilters.tier = f.colFilters.tier || [];
+        const i = arr.indexOf(t); if (i >= 0) arr.splice(i, 1); else arr.push(t);
+        if (!arr.length) delete f.colFilters.tier;
         clearSelection(); renderMain(); break;
       }
       case 'flt-clear': {
@@ -525,9 +535,10 @@ RWG.app = (function () {
         const p = el.parentElement.querySelector('.pop-panel'); if (!p) break;
         const willOpen = p.hidden;
         document.querySelectorAll('.pop-panel:not([hidden])').forEach(x => x.hidden = true);
-        if (willOpen) positionPanel(el, p);
+        if (willOpen) { positionPanel(el, p); const s = p.querySelector('.pop-search'); if (s) s.focus(); }
         break;
       }
+      case 'popsort': { const f = currentFilter(); f.sortKey = el.dataset.col; f.sortDir = el.dataset.dir; renderMain(); break; }
       case 'cols-reset': {
         const def = RWG.leadtable.defaultVisible(isAdminLeads());
         if (isAdminLeads()) state.adminCols = def; else state.agentCols = def;
@@ -536,11 +547,19 @@ RWG.app = (function () {
         refreshLeadsBody();   // keep the chooser open
         break;
       }
-      case 'ms-clear': {
-        const field = el.dataset.field;
-        currentFilter()[field] = [];
-        document.querySelectorAll(`input[data-msfilter="${field}"]`).forEach(cb => cb.checked = false);
-        clearSelection(); refreshLeadsBody(); updateFilterChrome(); updateBulkUI();
+      case 'colfilter-all': {   // select every value present for this column
+        const key = el.dataset.col, f = currentFilter(), c = currentTableLeads();
+        f.colFilters = f.colFilters || {};
+        f.colFilters[key] = RWG.leadtable.distinctValues(c.base, key);
+        document.querySelectorAll(`input[data-colfilter="${key}"]`).forEach(cb => cb.checked = true);
+        clearSelection(); refreshLeadsRows(); updateBulkUI(); break;
+      }
+      case 'colfilter-clear': {
+        const key = el.dataset.col, f = currentFilter();
+        if (f.colFilters) delete f.colFilters[key];
+        document.querySelectorAll(`input[data-colfilter="${key}"]`).forEach(cb => cb.checked = false);
+        clearSelection();
+        if (document.querySelector('#leads-body tbody')) { refreshLeadsRows(); updateBulkUI(); } else renderMain();
         break;
       }
       case 'bulk-assign': {
@@ -576,8 +595,8 @@ RWG.app = (function () {
       if (e.target.closest('.sel-cell') || e.target.closest('.sel-th')) return;
       const typeBtn = e.target.closest('#act-type button');
       if (typeBtn) { typeBtn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active')); typeBtn.classList.add('active'); return; }
-      const th = e.target.closest('th[data-sort]');
-      if (th) { sortByHeader(th.dataset.sort, th.dataset.dir); return; }
+      const thl = e.target.closest('.th-label[data-sort]');
+      if (thl) { sortByHeader(thl.dataset.sort, thl.dataset.dir); return; }
       const el = e.target.closest('[data-action]');
       if (el) { handleAction(el.dataset.action, el, e); }
     });
@@ -589,6 +608,11 @@ RWG.app = (function () {
       else if (f.dataset.action === 'do-signup') doSignup(f);
     });
     document.addEventListener('input', e => {
+      if (e.target.classList.contains('pop-search')) {   // narrow a column's value checklist
+        const q = e.target.value.toLowerCase(), panel = e.target.closest('.pop-panel');
+        if (panel) panel.querySelectorAll('.pop-list .pop-row').forEach(r => { r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+        return;
+      }
       if (e.target.id === 'global-search') {
         state.search = e.target.value;
         clearSelection();
@@ -605,29 +629,20 @@ RWG.app = (function () {
         U.toast('Lead reassigned', true); refreshDrawer(); renderMain();
         return;
       }
-      if (e.target.matches('select[data-filter]')) {
-        const k = e.target.dataset.filter, f = currentFilter();
-        if (k === 'sortpreset') {
-          const [sk, sd] = e.target.value.split(':');
-          f.sortKey = sk; f.sortDir = sd;
-        } else {
-          f[k] = e.target.value; clearSelection();   // changing the visible set drops the selection
-        }
-        renderMain();
-        return;
-      }
-      if (e.target.matches('input[data-col]')) {
+      if (e.target.matches('input[data-col]')) {   // column chooser (popover lives in the bar)
         const key = e.target.dataset.col, arr = currentCols(), i = arr.indexOf(key);
         if (e.target.checked) { if (i < 0) arr.push(key); } else if (i >= 0) arr.splice(i, 1);
         saveCols(currentColsKey(), arr);
-        refreshLeadsBody();   // update table only — keeps the chooser open
+        refreshLeadsBody();   // rebuilds headers+body; bar popover survives
         return;
       }
-      if (e.target.matches('input[data-msfilter]')) {
-        const field = e.target.dataset.msfilter, val = e.target.dataset.val, arr = currentFilter()[field], i = arr.indexOf(val);
-        if (e.target.checked) { if (i < 0) arr.push(val); } else if (i >= 0) arr.splice(i, 1);
+      if (e.target.matches('input[data-colfilter]')) {   // AutoFilter value checklist (popover lives in the header)
+        const key = e.target.dataset.colfilter, val = e.target.dataset.val, f = currentFilter();
+        f.colFilters = f.colFilters || {}; const arr = f.colFilters[key] = f.colFilters[key] || [];
+        const i = arr.indexOf(val); if (e.target.checked) { if (i < 0) arr.push(val); } else if (i >= 0) arr.splice(i, 1);
+        if (!arr.length) delete f.colFilters[key];
         clearSelection();
-        refreshLeadsBody(); updateFilterChrome(); updateBulkUI();   // keeps the checklist open
+        refreshLeadsRows(); updateBulkUI();   // rows only → header popover stays open
         return;
       }
       if (e.target.matches('input[data-sel]')) {

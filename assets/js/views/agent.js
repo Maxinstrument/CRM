@@ -30,7 +30,8 @@ RWG.views.agent = (function () {
 
   function board(user, f) {
     const all = D.leadsFor(user.id);
-    const bf = Object.assign({}, f, { stages: [] });   // board is grouped by stage already
+    // board is grouped by stage already, so drop any stage column-filter
+    const bf = Object.assign({}, f, { colFilters: Object.assign({}, f.colFilters, { stage: [] }) });
     const filtered = LT.applyFilter(all, bf);
     const cols = D.BOARD_STAGES.map(stage => {
       const items = filtered.filter(l => l.stage === stage);   // sort order preserved from applyFilter
@@ -47,7 +48,7 @@ RWG.views.agent = (function () {
     const all = D.leadsFor(user.id);
     const filtered = LT.applyFilter(all, f);
     return LT.filterBar(all, f, filtered.length, { columns: cols })
-      + `<div id="leads-body">${LT.table(filtered, f, { columns: cols, empty: 'Try removing a filter, or hit Clear to see all your leads.' })}</div>`;
+      + `<div id="leads-body">${LT.table(filtered, f, { columns: cols, allLeads: all, empty: 'Try removing a filter, or hit Clear all.' })}</div>`;
   }
 
   function today(user) {
