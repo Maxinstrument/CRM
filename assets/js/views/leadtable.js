@@ -26,7 +26,7 @@ RWG.leadtable = (function () {
   function columnDefs() {
     return {
       name:  { label: 'Lead', dir: 'asc', filterable: false, cmp: (a, b) => D.fullName(a).localeCompare(D.fullName(b)),
-               cell: (l) => `<div class="cell-name">${U.esc(D.fullName(l))}</div><div class="cell-sub">${U.esc(l.employer || '')}</div>` },
+               cell: (l) => `<div class="cell-name">${U.esc(D.fullName(l))}${l.returning ? ` <span class="ret-flag" title="Returning · ${l.seminarCount || 2} seminars">🔁</span>` : ''}</div><div class="cell-sub">${U.esc(l.employer || '')}</div>` },
       tier:  { label: 'Tier', dir: 'desc', filterable: true, fval: (l) => l._score.tier,
                cmp: (a, b) => tierRank(a) - tierRank(b), cell: (l) => U.tierChip(l._score) },
       score: { label: 'Score', dir: 'desc', filterable: true, fval: (l) => String(l._score.score),
@@ -42,6 +42,9 @@ RWG.leadtable = (function () {
                cmp: (a, b) => RWG.scoring.normPlan(a.planType).localeCompare(RWG.scoring.normPlan(b.planType)), cell: (l) => U.esc(RWG.scoring.normPlan(l.planType)) },
       list:  { label: 'List', dir: 'asc', filterable: true, fval: (l) => l.listName || '(none)',
                cmp: (a, b) => (a.listName || '').localeCompare(b.listName || ''), cell: (l) => `<span class="cell-sub" style="color:var(--ink)">${U.esc(l.listName || '—')}</span>` },
+      returning: { label: 'Returning', dir: 'desc', filterable: true, fval: (l) => l.returning ? 'Returning' : 'First time',
+               cmp: (a, b) => ((a.seminarCount || 1) - (b.seminarCount || 1)),
+               cell: (l) => l.returning ? `<span class="chip tier-gold" title="${l.seminarCount || 2} seminars">🔁 ×${l.seminarCount || 2}</span>` : '<span class="cell-sub">—</span>' },
       yos:   { label: 'YOS / Age', dir: 'desc', tdClass: 'num', filterable: true, fval: (l) => l.yos == null ? '(none)' : String(l.yos),
                cmp: (a, b) => (a.yos || 0) - (b.yos || 0), cell: (l) => `${l.yos ?? '—'} / ${l.age ?? '—'}` },
       afc:   { label: 'AFC', dir: 'desc', filterable: true, fval: (l) => l.afc == null ? '(none)' : String(l.afc),
@@ -55,7 +58,7 @@ RWG.leadtable = (function () {
   }
 
   function columnOrder(showOwner) {
-    const base = ['name', 'tier', 'score', 'stage', 'disposition', 'plan', 'list', 'yos', 'afc', 'attempts', 'touch'];
+    const base = ['name', 'tier', 'score', 'stage', 'disposition', 'plan', 'list', 'returning', 'yos', 'afc', 'attempts', 'touch'];
     if (showOwner) base.splice(3, 0, 'owner');   // Owner right after Score
     return base;
   }

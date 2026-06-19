@@ -11,7 +11,7 @@ RWG.views.agent = (function () {
     const s = l._score;
     return `<div class="lead-card${draggable ? ' draggable' : ''}" draggable="${draggable ? 'true' : 'false'}" data-action="open-lead" data-id="${l.id}">
       <div class="lc-top">
-        <span class="lc-name">${U.esc(D.fullName(l))}</span>
+        <span class="lc-name">${U.esc(D.fullName(l))}${l.returning ? ` <span title="Returning · ${l.seminarCount || 2} seminars">🔁</span>` : ''}</span>
         ${U.tierChip(s)}
       </div>
       <div class="lc-meta">

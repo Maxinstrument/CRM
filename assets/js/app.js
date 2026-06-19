@@ -58,8 +58,8 @@ RWG.app = (function () {
     viewAs: null,   // admin impersonation: the agent id being viewed (or null)
     archiveRows: null,   // deletion archive (fetched on demand; not in the live cache)
     agentFilter: newFilter(), adminFilter: newFilter(), selected: new Set(),
-    adminCols: loadCols('rwg_cols_admin_v2', RWG.leadtable.defaultVisible(true)),
-    agentCols: loadCols('rwg_cols_agent_v2', RWG.leadtable.defaultVisible(false))
+    adminCols: loadCols('rwg_cols_admin_v3', RWG.leadtable.defaultVisible(true)),
+    agentCols: loadCols('rwg_cols_agent_v3', RWG.leadtable.defaultVisible(false))
   };
 
   // "Effective" identity — usually the logged-in user, but an admin can view-as an agent.
@@ -78,7 +78,7 @@ RWG.app = (function () {
   const isAdminLeads = () => effectiveRole() === 'admin' && state.view === 'leads';
   const currentFilter = () => isAdminLeads() ? state.adminFilter : state.agentFilter;
   const currentCols = () => isAdminLeads() ? state.adminCols : state.agentCols;
-  const currentColsKey = () => isAdminLeads() ? 'rwg_cols_admin_v2' : 'rwg_cols_agent_v2';
+  const currentColsKey = () => isAdminLeads() ? 'rwg_cols_admin_v3' : 'rwg_cols_agent_v3';
 
   // Leads + filter for whatever lead table is currently on screen
   function currentTableLeads() {
@@ -546,19 +546,36 @@ RWG.app = (function () {
   function renderPreview(rows) {
     const el = $('#upload-preview'); if (!el) return;
     if (!rows.length) { el.innerHTML = `<div class="card"><p class="muted mb-0">Couldn't read any rows from that file. Make sure it's a CSV with a header row.</p></div>`; return; }
+    const cls = D.classifyImport(rows);
+    let nNew = 0, nRet = 0, nDup = 0;
+    cls.forEach(c => { if (c.status === 'returning') nRet++; else if (c.status === 'duplicate') nDup++; else nNew++; });
     const tierCount = { GOLD: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
-    const scored = rows.map(r => { const s = RWG.scoring.scoreLead(r); tierCount[s.tier]++; return { r, s }; });
-    const body = scored.slice(0, 40).map(({ r, s }) => `<tr>
-      <td><div class="cell-name">${U.esc((r.firstName || '') + ' ' + (r.lastName || ''))}</div><div class="cell-sub">${U.esc(r.employer || '')}</div></td>
-      <td>${U.tierChip(s)}</td><td>${U.scoreBar(s)}</td>
-      <td>${U.esc(RWG.scoring.normPlan(r.planType))}</td><td class="num">${r.yos ?? '—'}/${r.age ?? '—'}</td><td>${U.moneyK(r.afc)}</td></tr>`).join('');
+    const scored = rows.map((r, i) => { const s = RWG.scoring.scoreLead(r); tierCount[s.tier]++; return { r, s, c: cls[i] }; });
+    const body = scored.slice(0, 40).map(({ r, s, c }) => {
+      const prior = c.match;
+      const flag = c.status === 'returning'
+        ? `<span class="chip tier-gold" title="Already in your database">🔁 Returning</span>`
+        : c.status === 'duplicate'
+          ? `<span class="pill-soft" title="Listed more than once in this file — will be merged">Duplicate row</span>`
+          : `<span class="pill-soft">🆕 New</span>`;
+      const sub = (c.status === 'returning' && prior)
+        ? `In database${prior.assignedTo ? ' · ' + ((D.user(prior.assignedTo) || {}).name || '').split(' ')[0] : ''}${prior.disposition ? ' · ' + prior.disposition : (prior.stage ? ' · ' + prior.stage : '')}`
+        : U.esc(r.employer || '');
+      return `<tr>
+        <td><div class="cell-name">${U.esc((r.firstName || '') + ' ' + (r.lastName || ''))}</div><div class="cell-sub">${U.esc(sub)}</div></td>
+        <td>${flag}</td><td>${U.tierChip(s)}</td><td>${U.scoreBar(s)}</td>
+        <td>${U.esc(RWG.scoring.normPlan(r.planType))}</td><td class="num">${r.yos ?? '—'}/${r.age ?? '—'}</td><td>${U.moneyK(r.afc)}</td></tr>`;
+    }).join('');
     el.innerHTML = `
       <div class="card">
-        <div class="card-head"><h3>Preview · ${rows.length} leads</h3>
+        <div class="card-head"><h3>Preview · ${rows.length} rows</h3>
           <div class="tag-row" style="margin-left:auto">
+            <span class="pill-soft">🆕 ${nNew} new</span>${nRet ? `<span class="chip tier-gold">🔁 ${nRet} returning</span>` : ''}${nDup ? `<span class="pill-soft">${nDup} dup row${nDup === 1 ? '' : 's'}</span>` : ''}
+            <span class="fbar-sep"></span>
             <span class="chip tier-gold">★ ${tierCount.GOLD}</span><span class="chip tier-high">${tierCount.HIGH}</span>
             <span class="chip tier-medium">${tierCount.MEDIUM}</span><span class="chip tier-low">${tierCount.LOW}</span></div></div>
-        <div class="table-wrap"><table class="data"><thead><tr><th>Lead</th><th>Tier</th><th>Score</th><th>Plan</th><th>YOS/Age</th><th>AFC</th></tr></thead><tbody>${body}</tbody></table></div>
+        ${nRet ? `<p class="muted" style="font-size:12.5px;margin:-4px 0 10px">🔁 <b>${nRet}</b> ${nRet === 1 ? 'person is' : 'people are'} already in your database — they won't be duplicated. We'll merge this seminar into their existing record, flag them as <b>Returning</b>, hand them to the agent you choose below, and re-open any that had gone cold.${nDup ? ` (${nDup} duplicate row${nDup === 1 ? '' : 's'} within the file will be merged too.)` : ''}</p>` : (nDup ? `<p class="muted" style="font-size:12.5px;margin:-4px 0 10px">${nDup} duplicate row${nDup === 1 ? '' : 's'} within this file will be merged so no one is added twice.</p>` : '')}
+        <div class="table-wrap"><table class="data"><thead><tr><th>Lead</th><th>Status</th><th>Tier</th><th>Score</th><th>Plan</th><th>YOS/Age</th><th>AFC</th></tr></thead><tbody>${body}</tbody></table></div>
         ${rows.length > 40 ? `<p class="muted center mt-8" style="font-size:12.5px">…and ${rows.length - 40} more</p>` : ''}
         <div class="mt-16" style="display:flex;justify-content:flex-end;gap:10px">
           <button class="btn btn-quiet btn-sm" data-action="cancel-import">Cancel</button>
@@ -568,8 +585,17 @@ RWG.app = (function () {
   }
   function confirmImport() {
     const target = $('#assign-target') ? $('#assign-target').value : '';
-    D.addLeads(state.importRows, state.importName || 'Imported list', target || null);
-    U.toast(`Imported ${state.importRows.length} leads${target ? ' to ' + D.user(target).name.split(' ')[0] : ''}`, true);
+    const by = RWG.auth.currentUser().id;
+    const total = (state.importRows || []).length;
+    D.addLeadsSmart(state.importRows, state.importName || 'Imported list', target || null, by).then(sum => {
+      const bits = [];
+      if (sum.created) bits.push(sum.created + ' new');
+      if (sum.returning) bits.push(sum.returning + ' returning');
+      let msg = 'Imported ' + (bits.join(' · ') || (total + ' leads'));
+      if (sum.reopened) msg += ' · ' + sum.reopened + ' re-opened';
+      if (sum.duplicates) msg += ' · ' + sum.duplicates + ' dup merged';
+      U.toast(msg, true);
+    });
     state.importRows = null; state.tierFilter = 'ALL';
     nav('leads');
   }

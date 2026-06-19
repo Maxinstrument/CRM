@@ -85,6 +85,25 @@ RWG.data = (function () {
   const fullName = (l) => `${l.firstName || ''} ${l.lastName || ''}`.trim();
   const findLead = (id) => cache.leads.find(l => l.id === id);
 
+  // ── duplicate matching (returning seminar attendees) ──
+  const digits = (s) => String(s == null ? '' : s).replace(/\D/g, '');
+  const phoneKey = (p) => { const d = digits(p); return d.length >= 10 ? d.slice(-10) : (d.length >= 7 ? d : ''); };
+  const emailKey = (e) => { const s = String(e == null ? '' : e).trim().toLowerCase(); return /.+@.+\..+/.test(s) ? s : ''; };
+  const DEAD_STAGES = ['No Opportunity'];                          // re-opened when a returning lead reappears
+  const CONVERTED_STAGES = ['Appointment Kept', 'Opportunity Opened']; // already won — left exactly as-is
+  const stripLead = (l) => { const p = Object.assign({}, l); delete p._score; delete p.id; return p; };
+  function buildLeadIndex() {
+    const byPhone = {}, byEmail = {};
+    cache.leads.forEach(l => { const pk = phoneKey(l.phone); if (pk && !byPhone[pk]) byPhone[pk] = l; const ek = emailKey(l.email); if (ek && !byEmail[ek]) byEmail[ek] = l; });
+    return { byPhone, byEmail };
+  }
+  function fillBlanks(l, r) {   // enrich an existing record from an import row — never overwrites real data
+    ['firstName', 'lastName', 'email', 'phone', 'employer', 'planType', 'memberClass'].forEach(k => {
+      if ((l[k] == null || l[k] === '') && r[k] != null && r[k] !== '') l[k] = r[k];
+    });
+    ['age', 'yos', 'afc'].forEach(k => { if (l[k] == null && r[k] != null && r[k] !== '') l[k] = Number(r[k]); });
+  }
+
   function saveLead(l) {
     const payload = Object.assign({}, l); delete payload._score; delete payload.id;
     return db().collection('leads').doc(l.id).set(payload).catch(e => console.error('save lead:', e));
@@ -235,6 +254,95 @@ RWG.data = (function () {
         }, r));
       });
       batch.commit().catch(e => console.error('import:', e));
+    },
+
+    // Match an upload against existing leads (phone OR email). One entry per row — used by the import preview.
+    //   returning = matches a lead already in the database
+    //   duplicate = matches an earlier row in this same file (will be merged, not duplicated)
+    //   new       = a genuinely new person
+    classifyImport(rows) {
+      const idx = buildLeadIndex();
+      const seenP = {}, seenE = {};
+      return (rows || []).map(r => {
+        const pk = phoneKey(r.phone), ek = emailKey(r.email);
+        const match = (pk && idx.byPhone[pk]) || (ek && idx.byEmail[ek]) || null;
+        const dupInFile = !match && !!((pk && seenP[pk]) || (ek && seenE[ek]));
+        if (pk) seenP[pk] = true; if (ek) seenE[ek] = true;
+        return { status: match ? 'returning' : (dupInFile ? 'duplicate' : 'new'), match: match || null, dupInFile };
+      });
+    },
+
+    // Smart import: de-duplicate on phone/email, enrich + flag returning attendees, re-open
+    // dead ones, and reassign returning leads to the new list's agent. Returns a summary.
+    addLeadsSmart(rows, listName, assignTo, by) {
+      const idx = buildLeadIndex();                 // existing DB leads only
+      const runP = {}, runE = {};                   // people already handled in THIS import
+      const summary = { created: 0, returning: 0, reopened: 0, reassigned: 0, duplicates: 0 };
+      const stamp = now();
+      const list = listName || 'Imported list';
+      const nameOf = (id) => id ? ((cache.users.find(u => u.id === id) || {}).name || '—') : 'Unassigned';
+      const ops = [];
+      const register = (pk, ek, lead) => { if (pk) runP[pk] = lead; if (ek) runE[ek] = lead; };
+      (rows || []).forEach(r => {
+        const pk = phoneKey(r.phone), ek = emailKey(r.email);
+
+        // duplicate row within this same file → fold into the record we already touched, no double-count
+        const already = (pk && runP[pk]) || (ek && runE[ek]) || null;
+        if (already) {
+          summary.duplicates++;
+          fillBlanks(already, r);
+          register(pk, ek, already);
+          ops.push({ ref: db().collection('leads').doc(already.id), data: stripLead(already) });
+          return;
+        }
+
+        let l = (pk && idx.byPhone[pk]) || (ek && idx.byEmail[ek]) || null;
+        if (l) {
+          // ── RETURNING: keep the one record, enrich + flag it ──
+          summary.returning++;
+          l.seminarCount = (l.seminarCount || 1) + 1;
+          l.returning = true;
+          l.appearances = l.appearances || [];
+          l.appearances.push({ at: stamp, listName: list, by: by || null });
+          if (String(r.attended || '').toLowerCase() !== 'no') l.attended = 'Yes';
+          fillBlanks(l, r);
+          const notes = [];
+          const converted = CONVERTED_STAGES.includes(l.stage);
+          if (!converted && assignTo && l.assignedTo !== assignTo) {
+            notes.push('reassigned ' + nameOf(l.assignedTo) + ' → ' + nameOf(assignTo));
+            l.assignedTo = assignTo; summary.reassigned++;
+          }
+          if (!converted && DEAD_STAGES.includes(l.stage)) {
+            l.stage = 'New'; l.disposition = ''; summary.reopened++;
+            notes.push('pipeline re-opened for another attempt');
+          }
+          logChange(l, by, [], '🔁 Returning attendee — reappeared on "' + list + '" (now ' + l.seminarCount + ' seminars)'
+            + (converted ? ' · already converted, left as-is' : '') + (notes.length ? ' · ' + notes.join(' · ') : ''));
+          register(pk, ek, l);
+          ops.push({ ref: db().collection('leads').doc(l.id), data: stripLead(l) });
+        } else {
+          // ── NEW ──
+          summary.created++;
+          const ref = db().collection('leads').doc();
+          const lead = Object.assign({
+            id: ref.id, firstName: '', lastName: '', email: '', phone: '',
+            attempts: 0, notes: '', stage: 'New', disposition: '', apptDate: null, outcome: null,
+            activities: [], history: [], createdAt: stamp, listName: list, assignedTo: assignTo || null,
+            attended: 'Unknown', memberClass: 'Regular',
+            seminarCount: 1, returning: false, appearances: [{ at: stamp, listName: list, by: by || null }]
+          }, r);
+          ['age', 'yos', 'afc'].forEach(k => { lead[k] = (lead[k] === '' || lead[k] == null) ? null : Number(lead[k]); });
+          cache.leads.push(lead);
+          register(pk, ek, lead);
+          ops.push({ ref: ref, data: stripLead(lead) });
+        }
+      });
+      onChange();
+      // commit in chunks (a Firestore batch tops out at 500 writes)
+      const chunks = [];
+      for (let i = 0; i < ops.length; i += 450) chunks.push(ops.slice(i, i + 450));
+      return chunks.reduce((p, ch) => p.then(() => { const b = db().batch(); ch.forEach(o => b.set(o.ref, o.data)); return b.commit(); }), Promise.resolve())
+        .then(() => summary).catch(e => { console.error('smart import:', e); return summary; });
     },
 
     addLead(fields, by) {

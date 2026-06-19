@@ -94,6 +94,15 @@ RWG.views.drawer = function (leadId, opts) {
       <span class="muted" style="font-size:12.5px;align-self:center">This lead has left the CRM workflow.</span>`;
   }
 
+  const appLines = (l.appearances || []).slice().sort((a, b) => a.at - b.at)
+    .map(ap => `<div class="cell-sub">• ${U.esc(ap.listName || 'List')} — ${U.fmtRelative(ap.at)}</div>`).join('');
+  const returningBanner = l.returning ? `
+    <div class="card tight" style="background:rgba(194,161,77,.1);border-color:rgba(194,161,77,.5);margin-bottom:14px">
+      <div style="font-weight:700;color:var(--navy)">🔁 Returning attendee · ${l.seminarCount || 2} seminars</div>
+      <div class="cell-sub" style="margin:4px 0 6px">This person was already in your database before this list — they keep showing up, so they're worth a tailored approach. Their full call history is below.</div>
+      ${appLines}
+    </div>` : '';
+
   const assignRow = isAdmin ? `
     <div class="detail-item"><div class="k">Assigned to</div>
       <div class="v"><select class="assign-select" data-id="${l.id}" style="padding:6px 8px;font-size:13px;width:auto;min-width:150px">
@@ -134,7 +143,7 @@ RWG.views.drawer = function (leadId, opts) {
       </div>
     </div>
     <div class="drawer-body">
-
+      ${returningBanner}
       <div class="section-title">Contact ${editedNote}</div>
       <div class="detail-grid">
         ${detail('Phone', `<a href="tel:${U.esc(l.phone)}" style="color:var(--navy)">${U.esc(l.phone || '—')}</a>`)}
