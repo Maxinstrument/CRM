@@ -175,10 +175,52 @@ RWG.data = (function () {
       onChange(); saveLead(l);
     },
 
-    deleteLead(id) {   // admin only (enforced by security rules)
-      const i = cache.leads.findIndex(l => l.id === id);
-      if (i >= 0) { cache.leads.splice(i, 1); onChange(); }
-      db().collection('leads').doc(id).delete().catch(e => console.error('delete lead:', e));
+    deleteLead(id, by) {   // admin only (enforced by security rules) — archived before removal
+      const l = findLead(id);
+      const i = cache.leads.findIndex(x => x.id === id);
+      if (i >= 0) { cache.leads.splice(i, 1); onChange(); }   // hide from the CRM immediately
+      const actor = by || (me && me.id) || null;
+      const actorName = (cache.users.find(u => u.id === actor) || me || {}).name || null;
+      if (!l) return db().collection('leads').doc(id).delete().catch(e => console.error('delete lead:', e));
+      const snapshot = Object.assign({}, l); delete snapshot._score;
+      const ownerName = l.assignedTo ? ((cache.users.find(u => u.id === l.assignedTo) || {}).name || null) : null;
+      const archive = {
+        lead: snapshot, originalId: id,
+        name: fullName(l) || '(no name)',
+        stageAtDeletion: l.stage || null,
+        ownerAtDeletion: ownerName,
+        deletedAt: now(), deletedBy: actor, deletedByName: actorName
+      };
+      const batch = db().batch();
+      batch.set(db().collection('deleted_leads').doc(id), archive);   // keep a behind-the-scenes copy
+      batch.delete(db().collection('leads').doc(id));
+      return batch.commit().catch(e => console.error('archive+delete lead:', e));
+    },
+
+    // ── deletion archive (admin only) ──
+    fetchDeletedLeads() {   // one-time read; the archive is not part of the live cache
+      return db().collection('deleted_leads').get().then(s => {
+        const rows = s.docs.map(d => Object.assign({ id: d.id }, d.data()));
+        rows.sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0));
+        return rows;
+      });
+    },
+    restoreLead(id, by) {   // move a record back from the archive into live leads
+      const ref = db().collection('deleted_leads').doc(id);
+      return ref.get().then(d => {
+        if (!d.exists) throw new Error('Already restored or not found.');
+        const lead = Object.assign({}, (d.data() || {}).lead || {});
+        delete lead._score; delete lead.id;
+        lead.history = lead.history || [];
+        lead.history.push({ id: subId('h'), by: by || (me && me.id) || null, at: now(), changes: [], note: 'Lead restored from the deletion archive' });
+        const batch = db().batch();
+        batch.set(db().collection('leads').doc(id), lead);   // reappears via the live listener
+        batch.delete(ref);
+        return batch.commit();
+      });
+    },
+    purgeDeletedLead(id) {   // permanently erase a record from the archive too (no undo)
+      return db().collection('deleted_leads').doc(id).delete();
     },
 
     addLeads(rows, listName, assignTo) {

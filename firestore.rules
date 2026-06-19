@@ -34,6 +34,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Deletion archive — a behind-the-scenes copy of every deleted lead, admins only.
+    match /deleted_leads/{id} {
+      allow read, create, delete: if isAdmin();
+    }
+
     match /config/{doc} {
       allow read:  if signedIn();
       allow write: if isAdmin();

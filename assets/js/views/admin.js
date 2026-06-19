@@ -241,13 +241,60 @@ RWG.views.admin = (function () {
       </div>`;
   }
 
+  function archive() {
+    return `
+      <div class="card">
+        <div class="card-head">
+          <h3>Deleted leads — archive</h3>
+          <span class="sub">Every deleted lead is preserved here for your records. Hidden from the CRM; visible to admins only.</span>
+          <span class="topbar-spacer"></span>
+          <button class="btn btn-quiet btn-sm" data-action="archive-refresh">↻ Refresh</button>
+        </div>
+        <div id="archive-body"><div class="muted" style="padding:28px;text-align:center">Loading the archive…</div></div>
+      </div>`;
+  }
+
+  // Rendered by the controller after the archive is fetched (it lives outside the live cache).
+  function archiveTable(rows) {
+    if (!rows.length) {
+      return `<div class="empty" style="padding:34px 10px"><div class="ec">🗄️</div>
+        <h3>The archive is empty</h3><p>Deleted leads are preserved here automatically — nothing has been deleted yet.</p></div>`;
+    }
+    const head = `<thead><tr>
+      <th class="th-cell"><span class="th-label">Lead</span></th>
+      <th class="th-cell"><span class="th-label">Contact</span></th>
+      <th class="th-cell"><span class="th-label">Last stage</span></th>
+      <th class="th-cell"><span class="th-label">Owner at deletion</span></th>
+      <th class="th-cell"><span class="th-label">Deleted by</span></th>
+      <th class="th-cell"><span class="th-label">Deleted</span></th>
+      <th class="th-cell"></th></tr></thead>`;
+    const body = rows.map(r => {
+      const ld = r.lead || {};
+      const contact = [ld.phone, ld.email].filter(Boolean).join(' · ') || '—';
+      return `<tr>
+        <td><div style="font-weight:600">${U.esc(r.name || '(no name)')}</div><div class="cell-sub">${U.esc(ld.listName || '')}</div></td>
+        <td class="cell-sub">${U.esc(contact)}</td>
+        <td>${r.stageAtDeletion ? `<span class="pill-soft">${U.esc(r.stageAtDeletion)}</span>` : '<span class="cell-sub">—</span>'}</td>
+        <td class="cell-sub">${U.esc(r.ownerAtDeletion || 'Unassigned')}</td>
+        <td class="cell-sub">${U.esc(r.deletedByName || '—')}</td>
+        <td class="cell-sub">${r.deletedAt ? U.fmtRelative(r.deletedAt) : '—'}</td>
+        <td><div class="flex" style="gap:8px;justify-content:flex-end">
+          <button class="btn btn-gold btn-sm" data-action="restore-lead" data-id="${r.id}">↩ Restore</button>
+          <button class="btn btn-danger btn-sm" data-action="purge-lead" data-id="${r.id}">Erase</button>
+        </div></td></tr>`;
+    }).join('');
+    return `<div class="row-between mb-8"><span class="cell-sub">${rows.length} archived lead${rows.length === 1 ? '' : 's'} · newest first</span></div>
+      <div class="table-wrap"><table class="data">${head}<tbody>${body}</tbody></table></div>`;
+  }
+
   function render(view, user, ctx) {
     if (view === 'leads') return leadsTable(ctx);
     if (view === 'agents') return agents();
     if (view === 'upload') return upload();
+    if (view === 'archive') return archive();
     if (view === 'settings') return settings();
     return dashboard(user);
   }
 
-  return { render };
+  return { render, archiveTable };
 })();

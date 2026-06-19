@@ -11,6 +11,7 @@ RWG.app = (function () {
     team: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 4.5a3.2 3.2 0 0 1 0 7"/><path d="M18 20c0-2.5-1-4.5-2.5-5.6"/></svg>',
     upload: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V5"/><path d="M8 9l4-4 4 4"/><path d="M5 19h14"/></svg>',
     settings: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>',
+    archive: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></svg>',
     board: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="5" height="16" rx="1.3"/><rect x="9.5" y="4" width="5" height="11" rx="1.3"/><rect x="16" y="4" width="5" height="14" rx="1.3"/></svg>',
     today: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>',
     stats: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>',
@@ -24,6 +25,7 @@ RWG.app = (function () {
       { view: 'leads', label: 'All Leads', icon: 'leads' },
       { view: 'agents', label: 'Team', icon: 'team', badge: () => D.pendingUsers().length },
       { view: 'upload', label: 'Upload & Assign', icon: 'upload' },
+      { view: 'archive', label: 'Deleted Leads', icon: 'archive' },
       { view: 'settings', label: 'Scoring & Settings', icon: 'settings' }
     ],
     agent: [
@@ -39,6 +41,7 @@ RWG.app = (function () {
     leads: { t: 'All Leads', s: 'Every lead across the team' },
     agents: { t: 'Team', s: 'Agents & approvals' },
     upload: { t: 'Upload & Assign', s: 'Import and distribute lead lists' },
+    archive: { t: 'Deleted Leads', s: 'Archived records — restore or erase' },
     settings: { t: 'Scoring & Settings', s: 'Tune the lead-quality engine' },
     board: { t: 'My Board', s: 'Work your pipeline' },
     mylist: { t: 'My Leads', s: 'Your assigned leads, best first' },
@@ -53,6 +56,7 @@ RWG.app = (function () {
   const state = {
     view: null, search: '', leadId: null, editing: false, importRows: null, importName: '', dragId: null,
     viewAs: null,   // admin impersonation: the agent id being viewed (or null)
+    archiveRows: null,   // deletion archive (fetched on demand; not in the live cache)
     agentFilter: newFilter(), adminFilter: newFilter(), selected: new Set(),
     adminCols: loadCols('rwg_cols_admin_v2', RWG.leadtable.defaultVisible(true)),
     agentCols: loadCols('rwg_cols_agent_v2', RWG.leadtable.defaultVisible(false))
@@ -240,6 +244,24 @@ RWG.app = (function () {
     if (c) { c.innerHTML = html; c.scrollTop = 0; }
     // re-wire dynamic bits for the upload view
     if (state.view === 'upload') wireUpload();
+    // the deletion archive lives outside the live cache — fetch on entry, repaint from memory after
+    if (role === 'admin' && state.view === 'archive') { if (state.archiveRows === null) loadArchive(); else paintArchive(); }
+  }
+
+  // ── deletion archive ──
+  function loadArchive() {
+    const host = $('#archive-body'); if (!host) return;
+    host.innerHTML = '<div class="muted" style="padding:28px;text-align:center">Loading the archive…</div>';
+    D.fetchDeletedLeads().then(rows => { state.archiveRows = rows; paintArchive(); })
+      .catch(err => {
+        state.archiveRows = [];
+        const h = $('#archive-body');
+        if (h) h.innerHTML = '<div class="muted" style="padding:28px;text-align:center">Couldn’t load the archive — ' + U.esc(err.message || 'tap Refresh to retry.') + '</div>';
+      });
+  }
+  function paintArchive() {
+    const host = $('#archive-body'); if (!host) return;
+    host.innerHTML = RWG.views.admin.archiveTable(state.archiveRows || []);
   }
 
   function setActiveNav() {
@@ -249,6 +271,7 @@ RWG.app = (function () {
 
   function nav(view) {
     state.view = view;
+    if (view === 'archive') state.archiveRows = null;   // pull a fresh copy of the archive on entry
     clearSelection();
     setActiveNav();
     renderMain();
@@ -683,18 +706,46 @@ RWG.app = (function () {
         if (!RWG.auth.isAdmin()) break;
         const ids = Array.from(state.selected);
         if (!ids.length) break;
-        if (confirm(`Permanently delete ${ids.length} lead${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) {
-          ids.forEach(id => D.deleteLead(id));
+        if (confirm(`Delete ${ids.length} lead${ids.length > 1 ? 's' : ''}? They're moved to Deleted Leads (admin archive), where you can restore them.`)) {
+          const me = RWG.auth.currentUser().id;
+          ids.forEach(id => D.deleteLead(id, me));
           state.selected.clear(); renderMain();
-          U.toast(`Deleted ${ids.length} lead${ids.length > 1 ? 's' : ''}`);
+          U.toast(`Deleted ${ids.length} lead${ids.length > 1 ? 's' : ''} — kept in the archive`);
         }
         break;
       }
       case 'delete-lead': {
         if (!RWG.auth.isAdmin()) break;
         const id = el.dataset.id, l = D.lead(id);
-        if (confirm(`Permanently delete ${l ? D.fullName(l) : 'this lead'}? This cannot be undone.`)) {
-          D.deleteLead(id); closeDrawer(); renderMain(); U.toast('Lead deleted');
+        if (confirm(`Delete ${l ? D.fullName(l) : 'this lead'}? It's moved to Deleted Leads (admin archive), where you can restore it.`)) {
+          D.deleteLead(id, RWG.auth.currentUser().id); closeDrawer(); renderMain(); U.toast('Lead deleted — kept in the archive');
+        }
+        break;
+      }
+      case 'archive-refresh': { if (RWG.auth.isAdmin()) { state.archiveRows = null; loadArchive(); } break; }
+      case 'restore-lead': {
+        if (!RWG.auth.isAdmin()) break;
+        const id = el.dataset.id;
+        const row = (state.archiveRows || []).find(r => r.id === id);
+        const nm = row ? row.name : 'this lead';
+        if (confirm(`Restore ${nm} back into the CRM? It reappears in All Leads with its original owner and full history.`)) {
+          D.restoreLead(id, RWG.auth.currentUser().id).then(() => {
+            state.archiveRows = (state.archiveRows || []).filter(r => r.id !== id);
+            paintArchive(); U.toast('Lead restored', true);
+          }).catch(e => U.toast(e.message || 'Restore failed'));
+        }
+        break;
+      }
+      case 'purge-lead': {
+        if (!RWG.auth.isAdmin()) break;
+        const id = el.dataset.id;
+        const row = (state.archiveRows || []).find(r => r.id === id);
+        const nm = row ? row.name : 'this record';
+        if (confirm(`Permanently erase ${nm} from the archive? This cannot be undone — no record of this lead will remain anywhere.`)) {
+          D.purgeDeletedLead(id).then(() => {
+            state.archiveRows = (state.archiveRows || []).filter(r => r.id !== id);
+            paintArchive(); U.toast('Erased from the archive');
+          }).catch(e => U.toast(e.message || 'Erase failed'));
         }
         break;
       }
