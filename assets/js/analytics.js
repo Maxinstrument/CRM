@@ -85,5 +85,80 @@ RWG.analytics = (function () {
     return m;
   }
 
-  return { weekRange, activityStats, funnel, agentRollup, goal, tierMix, STAGE_RANK, APPT_GOAL_MIN, APPT_GOAL_MAX };
+  // ── Weekly reports: Mon–Sun in US Eastern, computed from the timestamped logs ──
+  const TZ = 'America/New_York', DAY = 86400000;
+  const WD = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  function _eParts(ms) {
+    const p = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms));
+    const o = {}; p.forEach(x => { if (x.type !== 'literal') o[x.type] = x.value; });
+    return o;
+  }
+  function _easternMidnightUTC(y, m, d) {   // UTC ms at which the Eastern wall-clock is y-m-d 00:00:00
+    const guess = Date.UTC(y, m - 1, d, 0, 0, 0);
+    const e = _eParts(guess);
+    const asUTC = Date.UTC(+e.year, +e.month - 1, +e.day, +e.hour, +e.minute, +e.second);
+    return guess - (asUTC - guess);
+  }
+  function weekStartOf(ms) {   // UTC ms of Monday 00:00 Eastern for the week containing ms
+    const e = _eParts(ms), sinceMon = (WD[e.weekday] + 6) % 7;
+    let mid = _easternMidnightUTC(+e.year, +e.month, +e.day);
+    if (sinceMon) { const b = _eParts(mid - sinceMon * DAY + 12 * 3600000); mid = _easternMidnightUTC(+b.year, +b.month, +b.day); }
+    return mid;
+  }
+  function weekRangeFor(weekStartMs) {   // [Mon 00:00 , Sun 23:59:59.999] — DST-safe
+    const next = weekStartOf(weekStartMs + 7 * DAY + 12 * 3600000);
+    return { start: weekStartMs, end: next - 1 };
+  }
+  function weekId(weekStartMs) { const e = _eParts(weekStartMs); return `${e.year}-${e.month}-${e.day}`; }
+  function weekLabel(weekStartMs) {
+    const fmt = (ms) => new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'short', day: 'numeric' }).format(new Date(ms));
+    return `${fmt(weekStartMs)} – ${fmt(weekRangeFor(weekStartMs).end)}, ${_eParts(weekStartMs).year}`;
+  }
+
+  // Per-agent tallies for a week, from EVERY logged action (by actor), so history survives
+  // reassignment and agent removal. Dials/reaches/etc. come from activities; milestone
+  // counts (appts set/kept, opportunities) from the stage-change history.
+  function weeklyReport(range) {
+    const leads = RWG.data.leadsRaw();
+    const users = RWG.data.users();
+    const inR = (t) => t >= range.start && t <= range.end;
+    const tally = {};
+    const ensure = (uid) => tally[uid] || (tally[uid] = { uid, dials: 0, reaches: 0, texts: 0, emails: 0, apptSet: 0, apptKept: 0, oppOpened: 0, noOpp: 0, touched: new Set() });
+    leads.forEach(l => {
+      (l.activities || []).forEach(a => {
+        if (!a.by || !inR(a.at)) return;
+        const t = ensure(a.by);
+        if (a.type === 'Call' || a.type === 'Voicemail') t.dials++;
+        if (a.reached) t.reaches++;
+        if (a.type === 'Text') t.texts++;
+        if (a.type === 'Email') t.emails++;
+        t.touched.add(l.id);
+      });
+      (l.history || []).forEach(h => {
+        if (!h.by || !inR(h.at)) return;
+        const t = ensure(h.by);
+        (h.changes || []).forEach(c => {
+          if (c.label !== 'Stage') return;
+          if (c.to === 'Appointment Set') t.apptSet++;
+          else if (c.to === 'Appointment Kept') t.apptKept++;
+          else if (c.to === 'Opportunity Opened') t.oppOpened++;
+          else if (c.to === 'No Opportunity') t.noOpp++;
+        });
+        t.touched.add(l.id);
+      });
+    });
+    const nameOf = (uid) => { const u = users.find(x => x.id === uid); return (u && u.name) || 'Former agent'; };
+    const agents = Object.keys(tally).map(uid => {
+      const t = tally[uid];
+      return { uid, name: nameOf(uid), dials: t.dials, reaches: t.reaches, texts: t.texts, emails: t.emails, apptSet: t.apptSet, apptKept: t.apptKept, oppOpened: t.oppOpened, noOpp: t.noOpp, leadsTouched: t.touched.size, reachRate: t.dials ? Math.round((t.reaches / t.dials) * 100) : 0 };
+    });
+    RWG.data.agents().forEach(a => { if (!tally[a.id]) agents.push({ uid: a.id, name: a.name, dials: 0, reaches: 0, texts: 0, emails: 0, apptSet: 0, apptKept: 0, oppOpened: 0, noOpp: 0, leadsTouched: 0, reachRate: 0 }); });
+    agents.sort((x, y) => y.apptSet - x.apptSet || y.reaches - x.reaches || y.dials - x.dials || x.name.localeCompare(y.name));
+    const team = agents.reduce((s, a) => ({ dials: s.dials + a.dials, reaches: s.reaches + a.reaches, apptSet: s.apptSet + a.apptSet, apptKept: s.apptKept + a.apptKept, oppOpened: s.oppOpened + a.oppOpened }), { dials: 0, reaches: 0, apptSet: 0, apptKept: 0, oppOpened: 0 });
+    team.reachRate = team.dials ? Math.round((team.reaches / team.dials) * 100) : 0;
+    team.goalMin = APPT_GOAL_MIN; team.goalMax = APPT_GOAL_MAX;
+    return { team, agents };
+  }
+
+  return { weekRange, activityStats, funnel, agentRollup, goal, tierMix, STAGE_RANK, APPT_GOAL_MIN, APPT_GOAL_MAX, weekStartOf, weekRangeFor, weekId, weekLabel, weeklyReport };
 })();

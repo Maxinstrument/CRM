@@ -297,14 +297,63 @@ RWG.views.admin = (function () {
       <div class="table-wrap"><table class="data">${head}<tbody>${body}</tbody></table></div>`;
   }
 
+  function reports() {
+    return `
+      <div class="card">
+        <div class="card-head">
+          <h3>Weekly reports</h3><span class="sub">Mon–Sun · US Eastern · agent performance, week by week</span>
+          <span class="topbar-spacer"></span>
+          <div class="flex" style="gap:6px">
+            <button class="btn btn-quiet btn-sm" data-action="report-prev">◀ Prev</button>
+            <button class="btn btn-quiet btn-sm" data-action="report-this">This week</button>
+            <button class="btn btn-quiet btn-sm" data-action="report-next">Next ▶</button>
+          </div>
+        </div>
+        <div id="report-body"><div class="muted" style="padding:28px;text-align:center">Loading…</div></div>
+      </div>`;
+  }
+
+  // Rendered by the controller once the week's data is ready (live for the current week, frozen for past weeks).
+  function reportTable(rep, label, status) {
+    const t = rep.team || {};
+    const statusChip = status === 'final'
+      ? '<span class="chip tier-high">Final</span>'
+      : '<span class="chip tier-medium">In progress</span>';
+    const goalChip = (t.apptSet || 0) >= (t.goalMin || 10)
+      ? '<span class="chip tier-high">Goal met ✓</span>'
+      : `<span class="chip tier-medium">${Math.max(0, (t.goalMin || 10) - (t.apptSet || 0))} to goal</span>`;
+    const head = `<thead><tr><th>Agent</th><th class="num">Dials</th><th class="num">Reaches</th><th class="num">Reach&nbsp;%</th><th class="num">Appts set</th><th class="num">Appts kept</th><th class="num">Opps</th><th class="num">Leads</th></tr></thead>`;
+    const rows = (rep.agents || []).map(a => `<tr>
+      <td style="font-weight:600">${U.esc(a.name)}</td>
+      <td class="num">${a.dials}</td><td class="num">${a.reaches}</td><td class="num">${a.reachRate}%</td>
+      <td class="num"><b>${a.apptSet}</b></td><td class="num">${a.apptKept}</td><td class="num">${a.oppOpened}</td><td class="num">${a.leadsTouched}</td></tr>`).join('');
+    const teamRow = (rep.agents || []).length ? `<tr style="border-top:2px solid var(--line-strong);font-weight:700">
+      <td>Team total</td><td class="num">${t.dials}</td><td class="num">${t.reaches}</td><td class="num">${t.reachRate}%</td>
+      <td class="num">${t.apptSet}</td><td class="num">${t.apptKept}</td><td class="num">${t.oppOpened}</td><td class="num">—</td></tr>` : '';
+    const empty = `<tr><td colspan="8" class="muted" style="padding:22px;text-align:center">No activity was logged this week.</td></tr>`;
+    return `
+      <div class="row-between mb-16 wrap-gap" style="gap:10px">
+        <div class="flex" style="gap:10px"><h3 style="font-size:18px">${U.esc(label)}</h3>${statusChip}</div>
+        <div class="flex" style="gap:8px">${goalChip}<button class="btn btn-ghost btn-sm" data-action="report-export">⬇ Export</button></div>
+      </div>
+      <div class="grid grid-4 mb-16">
+        ${statCard('Appointments set', (t.apptSet || 0), '📅')}
+        ${statCard('Appointments kept', (t.apptKept || 0), '🤝')}
+        ${statCard('Reaches', (t.reaches || 0), '🎯')}
+        ${statCard('Dials', (t.dials || 0), '📞')}
+      </div>
+      <div class="table-wrap"><table class="data">${head}<tbody>${rows || empty}${teamRow}</tbody></table></div>`;
+  }
+
   function render(view, user, ctx) {
     if (view === 'leads') return leadsTable(ctx);
     if (view === 'agents') return agents();
     if (view === 'upload') return upload();
     if (view === 'archive') return archive();
+    if (view === 'reports') return reports();
     if (view === 'settings') return settings();
     return dashboard(user);
   }
 
-  return { render, archiveTable };
+  return { render, archiveTable, reportTable };
 })();

@@ -260,6 +260,20 @@ RWG.data = (function () {
       return db().collection('deleted_leads').doc(id).delete();
     },
 
+    // ── weekly report snapshots (admin only) ──
+    getReport(weekId) {
+      return db().collection('reports').doc(weekId).get()
+        .then(d => d.exists ? Object.assign({ id: d.id }, d.data()) : null);
+    },
+    saveReport(weekId, data) {   // freeze a completed week, immutable thereafter
+      const payload = Object.assign({}, data);
+      delete payload._status;
+      payload.weekId = weekId;
+      payload.finalizedAt = now();
+      payload.finalizedBy = (me && me.id) || null;
+      return db().collection('reports').doc(weekId).set(payload);
+    },
+
     addLeads(rows, listName, assignTo) {
       const batch = db().batch();
       rows.forEach(r => {

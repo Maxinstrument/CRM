@@ -39,6 +39,11 @@ service cloud.firestore {
       allow read, create, delete: if isAdmin();
     }
 
+    // Frozen weekly performance reports — admins only.
+    match /reports/{id} {
+      allow read, write: if isAdmin();
+    }
+
     match /config/{doc} {
       allow read:  if signedIn();
       allow write: if isAdmin();

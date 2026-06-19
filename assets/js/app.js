@@ -12,6 +12,7 @@ RWG.app = (function () {
     upload: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V5"/><path d="M8 9l4-4 4 4"/><path d="M5 19h14"/></svg>',
     settings: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>',
     archive: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></svg>',
+    reports: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3" width="17" height="18" rx="2"/><path d="M8 16v-4M12 16V8M16 16v-6"/></svg>',
     board: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="5" height="16" rx="1.3"/><rect x="9.5" y="4" width="5" height="11" rx="1.3"/><rect x="16" y="4" width="5" height="14" rx="1.3"/></svg>',
     today: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>',
     stats: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>',
@@ -24,6 +25,7 @@ RWG.app = (function () {
       { view: 'dashboard', label: 'Command Center', icon: 'dashboard' },
       { view: 'leads', label: 'All Leads', icon: 'leads' },
       { view: 'agents', label: 'Team', icon: 'team', badge: () => D.pendingUsers().length },
+      { view: 'reports', label: 'Weekly Reports', icon: 'reports' },
       { view: 'upload', label: 'Upload & Assign', icon: 'upload' },
       { view: 'archive', label: 'Deleted Leads', icon: 'archive' },
       { view: 'settings', label: 'Scoring & Settings', icon: 'settings' }
@@ -40,6 +42,7 @@ RWG.app = (function () {
     dashboard: { t: 'Command Center', s: 'Team performance, live' },
     leads: { t: 'All Leads', s: 'Every lead across the team' },
     agents: { t: 'Team', s: 'Agents & approvals' },
+    reports: { t: 'Weekly Reports', s: 'Agent performance, week by week' },
     upload: { t: 'Upload & Assign', s: 'Import and distribute lead lists' },
     archive: { t: 'Deleted Leads', s: 'Archived records — restore or erase' },
     settings: { t: 'Scoring & Settings', s: 'Tune the lead-quality engine' },
@@ -58,6 +61,7 @@ RWG.app = (function () {
     viewAs: null,   // admin impersonation: the agent id being viewed (or null)
     archiveRows: null,   // deletion archive (fetched on demand; not in the live cache)
     assignTarget: null,  // agent we're prepping to hand pooled leads to (pre-selects the bulk reassign)
+    reportWeekStart: null, reportCache: {}, lastReport: null,   // weekly reports (live current week + frozen past)
     agentFilter: newFilter(), adminFilter: newFilter(), selected: new Set(),
     adminCols: loadCols('rwg_cols_admin_v3', RWG.leadtable.defaultVisible(true)),
     agentCols: loadCols('rwg_cols_agent_v3', RWG.leadtable.defaultVisible(false))
@@ -258,6 +262,46 @@ RWG.app = (function () {
     if (state.view === 'upload') wireUpload();
     // the deletion archive lives outside the live cache — fetch on entry, repaint from memory after
     if (role === 'admin' && state.view === 'archive') { if (state.archiveRows === null) loadArchive(); else paintArchive(); }
+    // weekly reports: current week computes live; past weeks load/freeze a snapshot
+    if (role === 'admin' && state.view === 'reports') loadOrPaintReport();
+  }
+
+  // ── weekly reports ──
+  const curWeekStart = () => RWG.analytics.weekStartOf(Date.now());
+  function loadOrPaintReport() {
+    if (state.reportWeekStart == null) state.reportWeekStart = curWeekStart();
+    const A = RWG.analytics, ws = state.reportWeekStart;
+    const range = A.weekRangeFor(ws), wid = A.weekId(ws), label = A.weekLabel(ws);
+    if (ws >= curWeekStart()) {                      // current (in-progress) week → always live
+      paintReport(A.weeklyReport(range), label, 'live');
+      return;
+    }
+    if (state.reportCache[wid]) { paintReport(state.reportCache[wid], label, 'final'); return; }
+    const host = $('#report-body'); if (host) host.innerHTML = '<div class="muted" style="padding:28px;text-align:center">Loading…</div>';
+    D.getReport(wid).then(snap => {
+      if (snap) { state.reportCache[wid] = snap; paintReport(snap, label, 'final'); return; }
+      const rep = A.weeklyReport(range);             // not stored yet → compute and freeze it
+      rep.weekStart = range.start; rep.weekEnd = range.end;
+      D.saveReport(wid, rep).catch(e => console.error('save report:', e));
+      state.reportCache[wid] = rep; paintReport(rep, label, 'final');
+    }).catch(() => { const h = $('#report-body'); if (h) h.innerHTML = '<div class="muted" style="padding:28px;text-align:center">Couldn’t load this report. If you just enabled reports, re-publish your Firestore rules.</div>'; });
+  }
+  function paintReport(rep, label, status) {
+    const host = $('#report-body'); if (!host) return;
+    state.lastReport = { rep, label };
+    host.innerHTML = RWG.views.admin.reportTable(rep, label, status);
+    const nextBtn = document.querySelector('[data-action="report-next"]');
+    if (nextBtn) nextBtn.disabled = state.reportWeekStart >= curWeekStart();
+  }
+  function csvCell(v) { v = (v == null) ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  function exportReport() {
+    const lr = state.lastReport; if (!lr) return;
+    const cols = ['Agent', 'Dials', 'Reaches', 'Reach %', 'Appts set', 'Appts kept', 'Opportunities', 'Leads touched'];
+    const rows = lr.rep.agents.map(a => [a.name, a.dials, a.reaches, a.reachRate + '%', a.apptSet, a.apptKept, a.oppOpened, a.leadsTouched]);
+    const t = lr.rep.team;
+    rows.push(['Team total', t.dials, t.reaches, t.reachRate + '%', t.apptSet, t.apptKept, t.oppOpened, '']);
+    const csv = [cols].concat(rows).map(r => r.map(csvCell).join(',')).join('\r\n');
+    downloadCSV('RWG_weekly_report_' + RWG.analytics.weekId(state.reportWeekStart) + '.csv', csv);
   }
 
   // ── deletion archive ──
@@ -284,6 +328,7 @@ RWG.app = (function () {
   function nav(view) {
     state.view = view;
     if (view === 'archive') state.archiveRows = null;   // pull a fresh copy of the archive on entry
+    if (view === 'reports') state.reportWeekStart = RWG.analytics.weekStartOf(Date.now());   // open on the current week
     if (view !== 'leads') state.assignTarget = null;     // the pre-selected assignee only applies to All Leads
     clearSelection();
     setActiveNav();
@@ -865,6 +910,10 @@ RWG.app = (function () {
         break;
       }
       case 'export-leads': exportLeads(); break;
+      case 'report-prev': { const A = RWG.analytics; if (state.reportWeekStart == null) state.reportWeekStart = curWeekStart(); state.reportWeekStart = A.weekStartOf(state.reportWeekStart - 4 * 86400000); loadOrPaintReport(); break; }
+      case 'report-next': { const A = RWG.analytics; if (state.reportWeekStart == null) state.reportWeekStart = curWeekStart(); const n = A.weekStartOf(state.reportWeekStart + 10 * 86400000); if (n <= curWeekStart()) { state.reportWeekStart = n; loadOrPaintReport(); } break; }
+      case 'report-this': state.reportWeekStart = curWeekStart(); loadOrPaintReport(); break;
+      case 'report-export': if (RWG.auth.isAdmin()) exportReport(); break;
       case 'approve-user': D.approveUser(el.dataset.id); U.toast('Agent approved', true); renderShell(RWG.auth.currentUser()); break;
       case 'deny-user': D.denyUser(el.dataset.id); U.toast('Request removed'); renderShell(RWG.auth.currentUser()); break;
       case 'load-sample-list': loadSampleList(); break;
