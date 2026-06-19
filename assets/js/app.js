@@ -168,12 +168,22 @@ RWG.app = (function () {
       <p class="muted" style="margin-top:18px">${U.esc(msg || 'Loading…')}</p></div></div>`;
   }
   function pendingScreen(u) {
+    const first = U.esc((u.name || '').split(' ')[0] || 'there');
+    let title = 'Account pending approval';
+    let sub = `Thanks, ${first}! Your account is awaiting the owner's approval — you'll have access the moment it's approved.`;
+    if (u.status === 'removed') {
+      title = 'Access removed';
+      sub = `Hi ${first} — your access to this CRM has been removed. If this is a mistake, ask your administrator to restore your access.`;
+    } else if (u.status === 'denied') {
+      title = 'Request not approved';
+      sub = `Hi ${first} — your access request wasn't approved. Please contact your administrator if you believe this is an error.`;
+    }
     return `<div id="gate"><div class="gate-card" style="text-align:center">
       <img class="gate-logo" src="assets/img/logo.png" alt="Resilient Wealth Group">
       <p class="gate-brand">Resilient Wealth Group</p>
       <p class="gate-motto">Wealth, Conducted with Purpose</p>
-      <p class="gate-title" style="margin-top:18px">Account pending approval</p>
-      <p class="gate-sub">Thanks, ${U.esc((u.name || '').split(' ')[0])}! Your account is awaiting the owner's approval — you'll have access the moment it's approved.</p>
+      <p class="gate-title" style="margin-top:18px">${title}</p>
+      <p class="gate-sub">${sub}</p>
       <button class="btn btn-ghost btn-block" data-action="logout">Sign out</button></div></div>`;
   }
   function render() {
@@ -820,6 +830,13 @@ RWG.app = (function () {
         if (confirm(`Remove ${u ? u.name : 'this person'}? They lose access immediately. Any leads still assigned to them stay in the system — reassign them from All Leads (filter Owner).`)) {
           D.removeUser(el.dataset.id); U.toast('Removed from the team'); renderMain();
         }
+        break;
+      }
+      case 'restore-user': {
+        if (!RWG.auth.isAdmin()) break;
+        D.approveUser(el.dataset.id);   // status → active (role preserved); they sign in again to regain access
+        U.toast('Access restored — they can sign back in', true);
+        renderMain();
         break;
       }
       case 'view-as': {

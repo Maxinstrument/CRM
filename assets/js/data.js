@@ -124,6 +124,7 @@ RWG.data = (function () {
     users: () => cache.users.slice(),
     agents: () => cache.users.filter(u => u.role === 'agent' && u.status === 'active'),
     pendingUsers: () => cache.users.filter(u => u.status === 'pending'),
+    removedUsers: () => cache.users.filter(u => u.status === 'removed' || u.status === 'denied'),
     user: (id) => cache.users.find(u => u.id === id),
     userByEmail: (email) => cache.users.find(u => (u.email || '').toLowerCase() === String(email).toLowerCase()),
     approveUser(id) { db().collection('users').doc(id).update({ status: 'active' }).catch(e => console.error('approve:', e)); },

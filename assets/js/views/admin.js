@@ -152,6 +152,15 @@ RWG.views.admin = (function () {
       }).join('')}
     </div>`;
 
+    // Removed / denied accounts — still in the system, can be restored in one click
+    const removed = D.removedUsers();
+    const removedCard = removed.length ? `<div class="card mb-16">
+      <div class="card-head"><h3>Removed &amp; inactive</h3><span class="sub">their account and history are intact — restore access anytime</span></div>
+      ${removed.map(u => `<div class="row-between" style="padding:10px 0;border-bottom:1px solid var(--line)">
+        <div class="flex">${U.avatar(u, 34)}<div><div style="font-weight:600">${U.esc(u.name)} <span class="chip tier-low">${u.status === 'denied' ? 'Denied' : 'Removed'}</span></div><div class="cell-sub">${U.esc(u.email)}</div></div></div>
+        <button class="btn btn-gold btn-sm" data-action="restore-user" data-id="${u.id}">Restore access</button>
+      </div>`).join('')}</div>` : '';
+
     const cards = board.map(r => `<div class="card">
       <div class="row-between mb-16"><div class="flex">${U.avatar(r.agent, 42)}<div>
         <div style="font-weight:700;font-size:15px">${U.esc(r.agent.name)}</div><div class="cell-sub">${U.esc(r.agent.email)}</div></div></div>
@@ -165,7 +174,7 @@ RWG.views.admin = (function () {
       <div class="mt-16"><span class="pill-soft">${r.leadCount} leads</span> <span class="pill-soft">${r.reachRate}% reach rate</span></div>
     </div>`).join('');
 
-    return pendingCard + rosterCard + (cards ? `<div class="grid grid-2">${cards}</div>` : '');
+    return pendingCard + rosterCard + removedCard + (cards ? `<div class="grid grid-2">${cards}</div>` : '');
   }
 
   function upload() {
