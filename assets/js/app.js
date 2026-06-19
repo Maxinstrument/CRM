@@ -118,7 +118,7 @@ RWG.app = (function () {
   function refreshLeadsBody() {
     const body = $('#leads-body'); if (!body) return;
     const c = currentTableLeads();
-    body.innerHTML = RWG.leadtable.table(c.filtered, c.f, tableOpts(c));
+    body.innerHTML = RWG.leadtable.leadsView(c.filtered, c.f, tableOpts(c));
     updateFilterChrome();
   }
   // Rebuild ONLY the rows — used for column-filter changes so the header's open popover survives
@@ -210,6 +210,7 @@ RWG.app = (function () {
           <button class="nav-item" data-action="logout">${ICONS.logout}<span>Sign out</span></button>
           <div class="side-foot">RWG CRM</div>
         </aside>
+        <div class="sidebar-scrim"></div>
         <header class="topbar">
           <button class="icon-btn menu-toggle" data-action="toggle-menu">☰</button>
           <div><div class="page-title" id="page-title"></div><div class="page-sub" id="page-sub"></div></div>
@@ -676,6 +677,11 @@ RWG.app = (function () {
       case 'toggle-appt': { const r = $('#appt-row'); if (r) r.hidden = !r.hidden; break; }
       case 'confirm-appt': confirmAppt(el.dataset.id); break;
       case 'graduate': graduate(el.dataset.id, el.dataset.stage); break;
+      case 'pick-stage': {   // stacked-card stage menu (mobile) → same path as a board drag
+        document.querySelectorAll('.pop-panel:not([hidden])').forEach(p => p.hidden = true);
+        moveStage(el.dataset.id, el.dataset.stage);
+        break;
+      }
       case 'flt-tier': {   // board quick-chips → colFilters.tier
         const t = el.dataset.tier, f = currentFilter();
         f.colFilters = f.colFilters || {}; const arr = f.colFilters.tier = f.colFilters.tier || [];
@@ -840,7 +846,14 @@ RWG.app = (function () {
   }
 
   function bind() {
+    let lastTouchDragEnd = 0;
     document.addEventListener('click', e => {
+      if (Date.now() - lastTouchDragEnd < 350) return;   // swallow the click synthesized right after a touch-drag
+      // tapping outside the mobile slide-in menu dismisses it
+      const sbEl = document.getElementById('sidebar');
+      if (sbEl && sbEl.classList.contains('open') && !e.target.closest('#sidebar') && !e.target.closest('.menu-toggle')) {
+        sbEl.classList.remove('open'); return;
+      }
       // close any open popover (column chooser / multi-select filter) when clicking outside it
       if (!e.target.closest('.pop-wrap')) {
         document.querySelectorAll('.pop-panel:not([hidden])').forEach(p => p.hidden = true);
@@ -902,6 +915,7 @@ RWG.app = (function () {
         const id = e.target.dataset.sel;
         if (e.target.checked) state.selected.add(id); else state.selected.delete(id);
         const tr = e.target.closest('tr'); if (tr) tr.classList.toggle('row-sel', e.target.checked);
+        const card = e.target.closest('.lead-row-card'); if (card) card.classList.toggle('sel', e.target.checked);
         updateBulkUI();
         return;
       }
@@ -953,6 +967,72 @@ RWG.app = (function () {
       document.querySelectorAll('.board-col.drop-target').forEach(c => c.classList.remove('drop-target'));
       if (col) moveStage(id, col.dataset.stage); else renderMain();
     });
+
+    // ── touch drag & drop: HTML5 DnD doesn't fire on touch, so hand-roll it ──
+    // Press-and-hold a card to pick it up, drag over a column, lift to drop.
+    let tDrag = null;
+    const LONGPRESS = 220, MOVE_CANCEL = 12;
+    const colAtPoint = (x, y) => { const el = document.elementFromPoint(x, y); return el ? el.closest('.board-col') : null; };
+    const endTouchDrag = (drop) => {
+      if (!tDrag) return;
+      clearTimeout(tDrag.timer);
+      if (tDrag.active) {
+        if (tDrag.ghost) tDrag.ghost.remove();
+        if (tDrag.card) tDrag.card.classList.remove('dragging');
+        document.querySelectorAll('.board-col.drop-target').forEach(c => c.classList.remove('drop-target'));
+        lastTouchDragEnd = Date.now();
+        if (drop && drop.dataset.stage) moveStage(tDrag.id, drop.dataset.stage);
+      }
+      tDrag = null;
+    };
+    document.addEventListener('touchstart', e => {
+      const card = e.target.closest('.lead-card.draggable');
+      if (!card || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      tDrag = { id: card.dataset.id, card, sx: t.clientX, sy: t.clientY, active: false, ghost: null, timer: null, offX: 0, offY: 0 };
+      tDrag.timer = setTimeout(() => {
+        if (!tDrag) return;
+        tDrag.active = true;
+        const r = card.getBoundingClientRect();
+        card.classList.add('dragging');
+        const g = card.cloneNode(true);
+        g.classList.add('drag-ghost');
+        g.style.width = r.width + 'px'; g.style.left = r.left + 'px'; g.style.top = r.top + 'px';
+        document.body.appendChild(g);
+        tDrag.ghost = g; tDrag.offX = tDrag.sx - r.left; tDrag.offY = tDrag.sy - r.top; tDrag.edge = 0;
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
+        // auto-scroll the board when the finger nears a screen edge (reach off-screen columns)
+        const step = () => { if (!tDrag || !tDrag.active) return; const board = document.querySelector('.board'); if (board && tDrag.edge) board.scrollLeft += tDrag.edge * 14; requestAnimationFrame(step); };
+        requestAnimationFrame(step);
+      }, LONGPRESS);
+    }, { passive: true });
+    document.addEventListener('touchmove', e => {
+      if (!tDrag) return;
+      const t = e.touches[0];
+      if (!tDrag.active) {   // moved before the hold completed → it's a scroll, let it go
+        if (Math.abs(t.clientX - tDrag.sx) > MOVE_CANCEL || Math.abs(t.clientY - tDrag.sy) > MOVE_CANCEL) { clearTimeout(tDrag.timer); tDrag = null; }
+        return;
+      }
+      e.preventDefault();   // we own the gesture now → stop the page from scrolling
+      const EDGE = 46;
+      tDrag.edge = t.clientX < EDGE ? -1 : (t.clientX > window.innerWidth - EDGE ? 1 : 0);
+      if (tDrag.ghost) { tDrag.ghost.style.left = (t.clientX - tDrag.offX) + 'px'; tDrag.ghost.style.top = (t.clientY - tDrag.offY) + 'px'; }
+      const col = colAtPoint(t.clientX, t.clientY);
+      document.querySelectorAll('.board-col.drop-target').forEach(c => { if (c !== col) c.classList.remove('drop-target'); });
+      if (col) col.classList.add('drop-target');
+    }, { passive: false });
+    document.addEventListener('touchend', e => {
+      if (!tDrag) return;
+      const t = e.changedTouches && e.changedTouches[0];
+      endTouchDrag(t ? colAtPoint(t.clientX, t.clientY) : null);
+    });
+    document.addEventListener('touchcancel', () => endTouchDrag(null));
+
+    // swap table ⇄ stacked cards when crossing the mobile breakpoint (rotate/resize)
+    const mqMobile = window.matchMedia('(max-width:760px)');
+    const onBreak = () => { if (document.body.classList.contains('in-app')) renderMain(); };
+    if (mqMobile.addEventListener) mqMobile.addEventListener('change', onBreak);
+    else if (mqMobile.addListener) mqMobile.addListener(onBreak);
   }
 
   return { boot, bind, state };

@@ -48,7 +48,7 @@ RWG.views.agent = (function () {
     const all = D.leadsFor(user.id);
     const filtered = LT.applyFilter(all, f);
     return LT.filterBar(all, f, filtered.length, { columns: cols })
-      + `<div id="leads-body">${LT.table(filtered, f, { columns: cols, allLeads: all, empty: 'Try removing a filter, or hit Clear all.' })}</div>`;
+      + `<div id="leads-body">${LT.leadsView(filtered, f, { columns: cols, allLeads: all, empty: 'Try removing a filter, or hit Clear all.' })}</div>`;
   }
 
   function today(user) {

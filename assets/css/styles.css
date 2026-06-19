@@ -38,6 +38,7 @@
 
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;height:100%;}
+html{overflow-x:clip;}   /* never let the page scroll/zoom sideways (clip keeps sticky headers working) */
 body{
   font-family:'Hanken Grotesk',system-ui,-apple-system,sans-serif;
   background:
@@ -583,3 +584,77 @@ table.data tbody tr:last-child td{border-bottom:none;}
 }
 .menu-toggle{display:none;}
 @media (max-width:760px){.menu-toggle{display:inline-flex;}}
+
+/* A board card being carried by a finger (touch drag) */
+.drag-ghost{position:fixed;z-index:200;margin:0;pointer-events:none;opacity:.96;
+  background:#fff;border:1px solid var(--gold);border-radius:12px;
+  box-shadow:0 18px 40px -12px rgba(14,36,64,.55);transform:rotate(2deg);}
+
+/* Backdrop behind the mobile slide-in menu (tap it to close) */
+.sidebar-scrim{display:none;}
+
+/* Stacked lead cards — the mobile face of the leads table */
+.lead-cards{display:flex;flex-direction:column;gap:10px;}
+.lead-row-card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px 14px;box-shadow:var(--shadow-card);cursor:pointer;transition:border-color .12s,box-shadow .12s;}
+.lead-row-card:active{border-color:var(--gold);}
+.lead-row-card.sel{border-color:var(--gold);background:rgba(194,161,77,.08);}
+.lead-row-card .lrc-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:11px;}
+.lead-row-card .lrc-id{flex:1;min-width:0;}
+.lead-row-card .lrc-name{font-weight:700;color:var(--navy);font-size:15px;}
+.lrc-sel{display:flex;align-items:center;margin:0;flex-shrink:0;}
+.lrc-sel input{width:20px;height:20px;accent-color:var(--gold);}
+.lrc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;}
+.lrc-cell{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.lrc-cell .k{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;}
+.lrc-cell .v{font-size:13.5px;font-weight:600;color:var(--ink);}
+.lrc-stage{display:inline-flex;align-items:center;gap:5px;background:none;border:none;padding:0;cursor:pointer;align-self:flex-start;}
+.lrc-stage .caret{color:var(--muted);font-size:11px;}
+.lrc-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid var(--line);margin-top:11px;padding-top:10px;}
+.lrc-phone{color:var(--navy);font-weight:600;font-size:13.5px;text-decoration:none;white-space:nowrap;}
+.pop-stage.on{background:rgba(194,161,77,.16);color:var(--navy);}
+@media (max-width:760px){ .cols-btn{display:none;} }
+
+/* ============================================================
+   Mobile polish (phones)
+   ============================================================ */
+@media (max-width:760px){
+  /* Stop iOS Safari from zooming in every time a field is focused (needs >=16px) */
+  .input,input[type=text],input[type=email],input[type=password],input[type=date],
+  input[type=datetime-local],input[type=number],input[type=tel],select,textarea{font-size:16px;}
+
+  /* Tighter screen edges → more room for content */
+  .main{padding:18px 14px 84px;}
+  .topbar{padding:0 12px;gap:10px;height:60px;}
+  .topbar .page-title{font-size:18px;}
+  .topbar .page-sub{display:none;}
+  .user-chip{padding:4px;border:none;background:transparent;}
+  .user-chip .meta{display:none;}            /* keep just the avatar on small screens */
+  .card{padding:18px 16px;}
+
+  /* Comfortable tap targets (≈44px) */
+  .btn{min-height:44px;}
+  .btn-sm{min-height:40px;padding:9px 14px;}
+  .nav-item{min-height:46px;}
+  .th-filter{font-size:13px;padding:6px 9px;}
+  .drawer-close,.drawer-edit{height:40px;}
+  table.data td.sel-cell input,table.data th.sel-th input,.pop-row input,.remember-lbl input{width:20px;height:20px;}
+  .type-toggle button{min-height:42px;}
+
+  /* The lead drawer fills the phone screen */
+  .drawer{width:100%;max-width:100%;}
+
+  /* One pipeline column at a time, with the next peeking to hint you can swipe */
+  .board-col{flex-basis:84vw;max-width:330px;}
+
+  /* Dim + cover the page behind the open slide-in menu so a tap anywhere closes it */
+  .sidebar.open ~ .sidebar-scrim{display:block;position:fixed;inset:0;z-index:90;background:rgba(10,26,48,.45);}
+
+  /* Keep the whole layout exactly viewport-wide — no child may stretch it (fixes the pinch-to-zoom) */
+  #app.show{grid-template-columns:minmax(0,1fr);}
+  .topbar{min-width:0;}
+  .topbar > div{min-width:0;}
+  .topbar .page-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* dashboard widgets that were wider than a phone */
+  .lb-row{grid-template-columns:22px 1fr repeat(4,minmax(38px,auto));gap:7px;font-size:12.5px;padding:11px 4px;}
+  .funnel-row{grid-template-columns:92px 1fr 40px;gap:9px;}
+}

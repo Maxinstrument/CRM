@@ -160,6 +160,50 @@ RWG.leadtable = (function () {
     return `<div class="table-wrap"><table class="data">${head}<tbody>${bodyFor(leads, opts)}</tbody></table></div>`;
   }
 
+  // ── Stacked card view: the mobile face of the leads table ──
+  function isMobile() { return !!(window.matchMedia && window.matchMedia('(max-width:760px)').matches); }
+
+  // One lead as a vertical card. Tap the Stage pill (B) → quick stage menu; tap anywhere else (A) → open drawer.
+  function leadRowCard(l, opts) {
+    const s = l._score, sel = !!opts.selectable, isSel = sel && (opts.selected || new Set()).has(l.id);
+    const owner = opts.showOwner ? D.user(l.assignedTo) : null;
+    const ownerCell = opts.showOwner
+      ? `<div class="lrc-cell"><span class="k">Owner</span><span class="v">${owner ? U.esc(owner.name.split(' ')[0]) : 'Unassigned'}</span></div>` : '';
+    const stageMenu = `<span class="pop-wrap">
+        <button class="lrc-stage" data-action="popmenu" type="button" aria-label="Change stage">${U.stageChip(l.stage)} <span class="caret">▾</span></button>
+        <div class="pop-panel" hidden><div class="pop-h">Move to stage</div>
+          ${D.STAGES.map(st => `<button class="pop-sort pop-stage ${st === l.stage ? 'on' : ''}" data-action="pick-stage" data-id="${l.id}" data-stage="${st}">${st}</button>`).join('')}
+        </div></span>`;
+    const checkbox = sel ? `<label class="sel-cell lrc-sel"><input type="checkbox" data-sel="${l.id}" ${isSel ? 'checked' : ''}></label>` : '';
+    const ret = l.returning ? ` <span title="Returning · ${l.seminarCount || 2} seminars">🔁</span>` : '';
+    return `<div class="lead-row-card${isSel ? ' sel' : ''}" data-action="open-lead" data-id="${l.id}">
+      <div class="lrc-top">
+        ${checkbox}
+        <div class="lrc-id"><div class="lrc-name">${U.esc(D.fullName(l))}${ret}</div><div class="cell-sub">${U.esc(l.employer || '—')}</div></div>
+        ${U.tierChip(s)}
+      </div>
+      <div class="lrc-grid">
+        <div class="lrc-cell"><span class="k">Stage</span>${stageMenu}</div>
+        <div class="lrc-cell"><span class="k">Score</span><span class="v">${U.scoreBar(s)}</span></div>
+        ${ownerCell}
+        <div class="lrc-cell"><span class="k">Plan</span><span class="v">${U.esc(RWG.scoring.normPlan(l.planType))}</span></div>
+      </div>
+      <div class="lrc-foot">
+        <a href="tel:${U.esc(l.phone)}" class="lrc-phone" onclick="event.stopPropagation()">${l.phone ? '📞 ' + U.esc(l.phone) : '—'}</a>
+        <span class="cell-sub">${l.attempts || 0} attempt${l.attempts === 1 ? '' : 's'}${l.disposition ? ' · ' + U.esc(l.disposition) : ''}</span>
+      </div>
+    </div>`;
+  }
+
+  function cardList(leads, opts) {
+    opts = opts || {};
+    if (!leads.length) return `<div class="empty" style="padding:40px 16px"><div class="ec">🔍</div><h3>No leads match</h3><p>${U.esc(opts.empty || 'Adjust a filter, or Clear all.')}</p></div>`;
+    return `<div class="lead-cards">${leads.map(l => leadRowCard(l, opts)).join('')}</div>`;
+  }
+
+  // Responsive: spreadsheet table on desktop, stacked cards on phones.
+  function leadsView(leads, f, opts) { return isMobile() ? cardList(leads, opts) : table(leads, f, opts); }
+
   function filterBar(allLeads, f, count, opts) {
     opts = opts || {};
     const cf = f.colFilters || {};
@@ -189,7 +233,7 @@ RWG.leadtable = (function () {
         const on = !visible || visible.includes(k), locked = k === 'name';
         return `<label class="pop-row"><input type="checkbox" data-col="${k}" ${on ? 'checked' : ''} ${locked ? 'disabled' : ''}> ${defs[k].label}</label>`;
       }).join('');
-      return `<div class="pop-wrap">
+      return `<div class="pop-wrap cols-btn">
         <button class="btn btn-ghost btn-sm" data-action="popmenu" type="button">▦ Columns</button>
         <div class="pop-panel" hidden><div class="pop-h">Show columns</div>${items}
           <div class="pop-f"><button class="btn btn-quiet btn-sm" data-action="cols-reset">Reset all</button></div></div>
@@ -233,5 +277,5 @@ RWG.leadtable = (function () {
     return [header].concat(rows).join('\r\n');
   }
 
-  return { defaultFilter, applyFilter, filterBar, table, bodyFor, summaryChips, distinctValues, defaultVisible, allColumns, toCSV };
+  return { defaultFilter, applyFilter, filterBar, table, leadsView, isMobile, bodyFor, summaryChips, distinctValues, defaultVisible, allColumns, toCSV };
 })();
