@@ -593,6 +593,11 @@ table.data tbody tr:last-child td{border-bottom:none;}
 /* Backdrop behind the mobile slide-in menu (tap it to close) */
 .sidebar-scrim{display:none;}
 
+/* Compact mobile search/sort/filter bar above the stacked lead cards */
+.fbar-mobile .fbar-search{width:100%;}
+.fbar-mobile .fbar-mrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+.fbar-mobile .fbar-sort{flex:0 0 auto;}
+
 /* Stacked lead cards — the mobile face of the leads table */
 .lead-cards{display:flex;flex-direction:column;gap:10px;}
 .lead-row-card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px 14px;box-shadow:var(--shadow-card);cursor:pointer;transition:border-color .12s,box-shadow .12s;}

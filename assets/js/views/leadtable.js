@@ -225,6 +225,24 @@ RWG.leadtable = (function () {
       </div>`;
     }
 
+    // Mobile (table/list views): compact bar — search + sort + tier chips + count/export
+    if (isMobile()) {
+      const sortOpts = [['score', 'desc', 'Best score first'], ['score', 'asc', 'Lowest score'], ['name', 'asc', 'Name A–Z'], ['stage', 'asc', 'Pipeline stage'], ['touch', 'desc', 'Recently touched'], ['attempts', 'asc', 'Fewest attempts']];
+      const cur = (f.sortKey || 'score') + ':' + (f.sortDir || 'desc');
+      const sortSel = `<select class="fbar-select fbar-sort" aria-label="Sort leads">${sortOpts.map(o => `<option value="${o[0]}:${o[1]}" ${cur === o[0] + ':' + o[1] ? 'selected' : ''}>${o[2]}</option>`).join('')}</select>`;
+      const tierChips = ['GOLD', 'HIGH', 'MEDIUM', 'LOW'].map(t => {
+        const m = RWG.scoring.tierMeta[t], on = (cf.tier || []).includes(t);
+        return `<button class="fbar-tier ${on ? 'on' : ''}" data-action="flt-tier" data-tier="${t}"><span class="tier-dot ${m.dot}"></span>${m.label}</button>`;
+      }).join('');
+      const exportBtn = opts.canExport ? `<button class="btn btn-ghost btn-sm" data-action="export-leads" title="Export this view to CSV">⬇ Export</button>` : '';
+      return `<div class="filterbar fbar-mobile">
+        <input class="input fbar-search" type="search" placeholder="Search name, employer or phone…" value="${U.esc(f.search || '')}">
+        <div class="fbar-mrow">${sortSel}${tierChips}</div>
+        ${chips ? `<div class="chip-row">${chips}</div>` : ''}
+        <div class="fbar-bottom"><span class="fbar-count">${count} of ${allLeads.length} lead${allLeads.length === 1 ? '' : 's'}</span><span class="fbar-spacer"></span>${clearBtn}${exportBtn}</div>
+      </div>`;
+    }
+
     // table views: slim bar — active-filter summary + count + columns + export
     const visible = opts.columns;
     const colBtn = (() => {

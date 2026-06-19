@@ -911,6 +911,11 @@ RWG.app = (function () {
         if (panel) panel.querySelectorAll('.pop-list .pop-row').forEach(r => { r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'; });
         return;
       }
+      if (e.target.classList.contains('fbar-search')) {   // mobile in-list search
+        state.search = e.target.value;
+        refreshLeadsBody();   // refresh only the list so the search box keeps focus
+        return;
+      }
       if (e.target.id === 'global-search') {
         state.search = e.target.value;
         clearSelection();
@@ -921,6 +926,12 @@ RWG.app = (function () {
       }
     });
     document.addEventListener('change', e => {
+      if (e.target.classList.contains('fbar-sort')) {   // mobile sort dropdown
+        const parts = (e.target.value || 'score:desc').split(':');
+        const f = currentFilter(); f.sortKey = parts[0]; f.sortDir = parts[1];
+        refreshLeadsBody();
+        return;
+      }
       if (e.target.classList.contains('assign-select')) {
         D.assignLead(e.target.dataset.id, e.target.value || null, RWG.auth.currentUser().id);
         U.toast('Lead reassigned', true); refreshDrawer(); renderMain();
