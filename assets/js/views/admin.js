@@ -190,7 +190,7 @@ RWG.views.admin = (function () {
             <p>or click to browse · .csv</p>
           </label>
           <input id="file-input" type="file" accept=".csv,text/csv" hidden>
-          <div class="mt-16 flex" style="justify-content:space-between">
+          <div class="mt-16 flex upload-actions" style="justify-content:space-between">
             <button class="btn btn-ghost btn-sm" data-action="load-sample-list">＋ Load a sample list (demo)</button>
             <a class="btn btn-quiet btn-sm" data-action="download-template">⬇ Download CSV template</a>
           </div>

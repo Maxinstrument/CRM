@@ -657,4 +657,8 @@ table.data tbody tr:last-child td{border-bottom:none;}
   /* dashboard widgets that were wider than a phone */
   .lb-row{grid-template-columns:22px 1fr repeat(4,minmax(38px,auto));gap:7px;font-size:12.5px;padding:11px 4px;}
   .funnel-row{grid-template-columns:92px 1fr 40px;gap:9px;}
+
+  /* Upload page: stack the sample/template buttons full-width instead of overflowing the card */
+  .upload-actions{flex-wrap:wrap;}
+  .upload-actions > .btn{flex:1 1 100%;}
 }
