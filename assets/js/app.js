@@ -57,6 +57,7 @@ RWG.app = (function () {
     view: null, search: '', leadId: null, editing: false, importRows: null, importName: '', dragId: null,
     viewAs: null,   // admin impersonation: the agent id being viewed (or null)
     archiveRows: null,   // deletion archive (fetched on demand; not in the live cache)
+    assignTarget: null,  // agent we're prepping to hand pooled leads to (pre-selects the bulk reassign)
     agentFilter: newFilter(), adminFilter: newFilter(), selected: new Set(),
     adminCols: loadCols('rwg_cols_admin_v3', RWG.leadtable.defaultVisible(true)),
     agentCols: loadCols('rwg_cols_agent_v3', RWG.leadtable.defaultVisible(false))
@@ -247,7 +248,7 @@ RWG.app = (function () {
     if (!real) return render();
     const user = effectiveUser(), role = effectiveRole();
     setMeta();
-    const ctx = { search: state.search, isAdmin: role === 'admin', filter: currentFilter(), columns: currentCols(), selected: state.selected };
+    const ctx = { search: state.search, isAdmin: role === 'admin', filter: currentFilter(), columns: currentCols(), selected: state.selected, assignTarget: state.assignTarget };
     const html = (role === 'admin')
       ? RWG.views.admin.render(state.view, user, ctx)
       : RWG.views.agent.render(state.view, user, ctx);
@@ -283,6 +284,7 @@ RWG.app = (function () {
   function nav(view) {
     state.view = view;
     if (view === 'archive') state.archiveRows = null;   // pull a fresh copy of the archive on entry
+    if (view !== 'leads') state.assignTarget = null;     // the pre-selected assignee only applies to All Leads
     clearSelection();
     setActiveNav();
     renderMain();
@@ -741,7 +743,7 @@ RWG.app = (function () {
         ids.forEach(id => D.assignLead(id, v === 'unassigned' ? null : v, me));
         const who = v === 'unassigned' ? 'the unassigned pool' : D.user(v).name.split(' ')[0];
         U.toast(`Reassigned ${ids.length} lead${ids.length > 1 ? 's' : ''} → ${who}`, true);
-        state.selected.clear(); renderMain(); break;
+        state.selected.clear(); state.assignTarget = null; renderMain(); break;
       }
       case 'bulk-clear': state.selected.clear(); renderMain(); break;
       case 'bulk-delete': {
@@ -839,6 +841,16 @@ RWG.app = (function () {
         D.approveUser(el.dataset.id);   // status → active (role preserved); they sign in again to regain access
         U.toast('Access restored — they can sign back in', true);
         renderMain();
+        break;
+      }
+      case 'assign-to-agent': {   // Team shortcut → jump to All Leads, pool-filtered, with this agent pre-selected
+        if (!RWG.auth.isAdmin()) break;
+        const a = D.user(el.dataset.id);
+        state.assignTarget = el.dataset.id;
+        state.adminFilter.colFilters = Object.assign({}, state.adminFilter.colFilters || {}, { owner: ['Unassigned'] });
+        state.search = ''; const gs = $('#global-search'); if (gs) gs.value = '';
+        nav('leads');
+        U.toast(`Pick the unassigned leads for ${a ? a.name.split(' ')[0] : 'this agent'}, then hit Apply`, true);
         break;
       }
       case 'view-as': {

@@ -83,7 +83,7 @@ RWG.views.admin = (function () {
       <div class="grid grid-2 mb-16">${funnelBlock('Team funnel', 'all leads', allLeads)}${lb}</div>`;
   }
 
-  function bulkBar(count) {
+  function bulkBar(count, target) {
     return `<div class="bulkbar" id="bulkbar">
       <span class="bulk-count">${count} selected</span>
       <span class="fbar-sep"></span>
@@ -91,7 +91,7 @@ RWG.views.admin = (function () {
       <select id="bulk-agent" class="fbar-select">
         <option value="">Choose agent…</option>
         <option value="unassigned">Unassigned (pool)</option>
-        ${D.agents().map(a => `<option value="${a.id}">${U.esc(a.name)}</option>`).join('')}
+        ${D.agents().map(a => `<option value="${a.id}" ${a.id === target ? 'selected' : ''}>${U.esc(a.name)}</option>`).join('')}
       </select>
       <button class="btn btn-gold btn-sm" data-action="bulk-assign">Apply</button>
       <span class="fbar-spacer"></span>
@@ -108,7 +108,7 @@ RWG.views.admin = (function () {
     const all = D.leads();
     const filtered = LT.applyFilter(all, f);
     return LT.filterBar(all, f, filtered.length, { showOwner: true, columns: cols, canExport: true })
-      + (selected.size ? bulkBar(selected.size) : '')
+      + (selected.size ? bulkBar(selected.size, ctx && ctx.assignTarget) : '')
       + `<div id="leads-body">${LT.leadsView(filtered, f, { showOwner: true, columns: cols, selectable: true, selected: selected, allLeads: all, empty: 'Try a different filter, or Clear all.' })}</div>`;
   }
 
@@ -135,6 +135,7 @@ RWG.views.admin = (function () {
         const isMe = u.id === meId;
         const roleChip = u.role === 'admin' ? '<span class="chip tier-gold">Admin</span>' : '<span class="chip tier-low">Agent</span>';
         const editBtn = `<button class="btn btn-quiet btn-sm" data-action="edit-user" data-id="${u.id}">Edit</button>`;
+        const assignBtn = u.role === 'agent' ? `<button class="btn btn-ghost btn-sm" data-action="assign-to-agent" data-id="${u.id}">＋ Assign leads</button>` : '';
         let extra = '<span class="cell-sub" style="align-self:center">You</span>';
         if (!isMe) {
           const isOwner = (u.email || '').toLowerCase() === (RWG.OWNER_EMAIL || '').toLowerCase();
@@ -145,7 +146,7 @@ RWG.views.admin = (function () {
           const removeBtn = isOwner ? '' : `<button class="btn btn-danger btn-sm" data-action="remove-user" data-id="${u.id}">Remove</button>`;
           extra = `${viewBtn}${roleBtn}${removeBtn}`;
         }
-        const action = `<div class="flex wrap-gap" style="gap:8px">${editBtn}${extra}</div>`;
+        const action = `<div class="flex wrap-gap" style="gap:8px">${editBtn}${assignBtn}${extra}</div>`;
         return `<div class="row-between" style="padding:10px 0;border-bottom:1px solid var(--line)">
           <div class="flex">${U.avatar(u, 34)}<div><div style="font-weight:600">${U.esc(u.name)} ${roleChip}</div><div class="cell-sub">${U.esc(u.email)}</div></div></div>
           <div>${action}</div></div>`;
