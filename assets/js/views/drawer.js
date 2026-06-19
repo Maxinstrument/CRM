@@ -161,6 +161,7 @@ RWG.views.drawer = function (leadId, opts) {
         ${detail('Member Class', U.esc(l.memberClass || 'Regular'))}
         ${detail('AFC / Salary', U.money(l.afc))}
         ${detail('Employer', U.esc(l.employer || '—'))}
+        ${(!l.assignedTo && l.formerOwnerName) ? detail('Former owner', U.esc(l.formerOwnerName) + ' · removed') : ''}
         ${assignRow}
       </div>
 

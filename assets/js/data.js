@@ -133,9 +133,26 @@ RWG.data = (function () {
       const u = cache.users.find(x => x.id === id); if (u) { u.role = role; onChange(); }
       db().collection('users').doc(id).update({ role: role }).catch(e => console.error('set role:', e));
     },
-    removeUser(id) {   // revoke access (their leads stay in the system for reassignment)
-      const u = cache.users.find(x => x.id === id); if (u) { u.status = 'removed'; onChange(); }
+    removeUser(id) {   // revoke access AND release their leads to the unassigned pool (not returned on restore)
+      const u = cache.users.find(x => x.id === id);
+      const name = (u && u.name) || 'a teammate';
+      if (u) u.status = 'removed';
+      const by = (me && me.id) || null;
+      const mine = cache.leads.filter(l => l.assignedTo === id);
+      const ops = [];
+      mine.forEach(l => {
+        l.assignedTo = null;
+        l.formerOwner = id; l.formerOwnerName = name;   // breadcrumb: who this pooled lead used to belong to
+        logChange(l, by, [{ label: 'Owner', from: name, to: 'Unassigned' }], name + ' was removed from the team — lead returned to the unassigned pool');
+        ops.push({ ref: db().collection('leads').doc(l.id), data: stripLead(l) });
+      });
+      onChange();
       db().collection('users').doc(id).update({ status: 'removed' }).catch(e => console.error('remove user:', e));
+      const chunks = [];   // release the leads (chunked — a Firestore batch caps at 500)
+      for (let i = 0; i < ops.length; i += 450) chunks.push(ops.slice(i, i + 450));
+      chunks.reduce((p, ch) => p.then(() => { const b = db().batch(); ch.forEach(o => b.set(o.ref, o.data)); return b.commit(); }), Promise.resolve())
+        .catch(e => console.error('release leads:', e));
+      return mine.length;   // so the UI can report how many were freed
     },
     setUserName(id, name) {
       const u = cache.users.find(x => x.id === id); if (u) { u.name = name; onChange(); }

@@ -827,8 +827,10 @@ RWG.app = (function () {
         const me = RWG.auth.currentUser(), u = D.user(el.dataset.id);
         if (el.dataset.id === me.id) break;
         if (u && (u.email || '').toLowerCase() === (RWG.OWNER_EMAIL || '').toLowerCase()) { U.toast('The owner account can’t be removed'); break; }
-        if (confirm(`Remove ${u ? u.name : 'this person'}? They lose access immediately. Any leads still assigned to them stay in the system — reassign them from All Leads (filter Owner).`)) {
-          D.removeUser(el.dataset.id); U.toast('Removed from the team'); renderMain();
+        if (confirm(`Remove ${u ? u.name : 'this person'}? They lose access immediately, and their leads return to the Unassigned pool so you can hand them to someone else. If you restore this person later, those leads do NOT come back to them automatically.`)) {
+          const freed = D.removeUser(el.dataset.id);
+          U.toast(`Removed ${u ? u.name.split(' ')[0] : 'agent'}${freed ? ' · ' + freed + ' lead' + (freed === 1 ? '' : 's') + ' moved to Unassigned' : ''}`);
+          renderMain();
         }
         break;
       }
