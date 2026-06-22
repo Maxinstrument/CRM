@@ -222,6 +222,7 @@ RWG.app = (function () {
           <div class="nav-label">${role === 'admin' ? 'Owner' : (impersonating ? 'Viewing as agent' : 'Agent')}</div>
           ${navHtml}
           <div class="spacer"></div>
+          <a class="nav-item" href="guide.html" target="_blank" rel="noopener"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 5h6a3 3 0 0 1 3 3 3 3 0 0 1 3-3h6v13h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3H3z"/></svg><span>Guide</span></a>
           <button class="nav-item" data-action="logout">${ICONS.logout}<span>Sign out</span></button>
           <div class="side-foot">RWG CRM</div>
         </aside>

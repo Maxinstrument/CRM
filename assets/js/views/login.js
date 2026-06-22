@@ -44,6 +44,7 @@ RWG.views.login = function () {
       </form>
 
       <p class="gate-note">Resilient Wealth Group · secure access. New agents request an account; the owner approves it.</p>
+      <p class="gate-note" style="margin-top:10px"><a href="guide.html" target="_blank" rel="noopener" style="color:#C2A14D;font-weight:600;text-decoration:none">New here? Read the quick guide →</a></p>
     </div>
   </div>`;
 };
