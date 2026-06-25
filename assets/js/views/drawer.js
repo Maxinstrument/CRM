@@ -141,7 +141,7 @@ RWG.views.drawer = function (leadId, opts) {
     <div class="drawer-head">
       <div class="dh-top">
         <div>
-          <div class="tag-row mb-8">${U.tierChip(s, true)} ${U.stageChip(l.stage)} ${U.callbackChip(l)}</div>
+          <div class="tag-row mb-8">${U.tierChip(s, true)} ${U.stageChip(l.stage)} ${U.callbackChip(l)} ${U.clickedChip(l)}</div>
           <h2>${U.esc(D.fullName(l))}</h2>
           <div class="dh-sub">${U.esc(l.employer || '')}${owner ? ' · ' + U.esc(owner.name) : ''}</div>
         </div>

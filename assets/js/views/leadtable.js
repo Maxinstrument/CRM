@@ -26,7 +26,7 @@ RWG.leadtable = (function () {
   function columnDefs() {
     return {
       name:  { label: 'Lead', dir: 'asc', filterable: false, cmp: (a, b) => D.fullName(a).localeCompare(D.fullName(b)),
-               cell: (l) => `<div class="cell-name">${U.esc(D.fullName(l))}${l.returning ? ` <span class="ret-flag" title="Returning · ${l.seminarCount || 2} seminars">🔁</span>` : ''} ${U.callbackChip(l)}</div><div class="cell-sub">${U.esc(l.employer || '')}</div>` },
+               cell: (l) => `<div class="cell-name">${U.esc(D.fullName(l))}${l.returning ? ` <span class="ret-flag" title="Returning · ${l.seminarCount || 2} seminars">🔁</span>` : ''} ${U.callbackChip(l)}${U.clickedChip(l)}</div><div class="cell-sub">${U.esc(l.employer || '')}</div>` },
       tier:  { label: 'Tier', dir: 'desc', filterable: true, fval: (l) => l._score.tier,
                cmp: (a, b) => tierRank(a) - tierRank(b), cell: (l) => U.tierChip(l._score) },
       score: { label: 'Score', dir: 'desc', filterable: true, fval: (l) => String(l._score.score),
@@ -182,7 +182,7 @@ RWG.leadtable = (function () {
     return `<div class="lead-row-card${isSel ? ' sel' : ''}" data-action="open-lead" data-id="${l.id}">
       <div class="lrc-top">
         ${checkbox}
-        <div class="lrc-id"><div class="lrc-name">${U.esc(D.fullName(l))}${ret} ${U.callbackChip(l)}</div><div class="cell-sub">${U.esc(l.employer || '—')}</div></div>
+        <div class="lrc-id"><div class="lrc-name">${U.esc(D.fullName(l))}${ret} ${U.callbackChip(l)}${U.clickedChip(l)}</div><div class="cell-sub">${U.esc(l.employer || '—')}</div></div>
         ${U.tierChip(s)}
       </div>
       <div class="lrc-grid">

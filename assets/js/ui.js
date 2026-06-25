@@ -66,6 +66,17 @@ RWG.ui = (function () {
       : '';
   }
 
+  // Clicked-but-never-registered cohort: detected from the "did not sign up" marker in notes
+  // (or an explicit field). Lets agents tell these apart from people who actually signed up.
+  function isClickedNoSignup(l) {
+    return !!(l && (l.clickedNoSignup || /did not sign up/i.test(l.notes || '')));
+  }
+  function clickedChip(l) {
+    return isClickedNoSignup(l)
+      ? `<span class="chip chip-clicked" title="Clicked the seminar invite but did not register">👀 Clicked, no signup</span>`
+      : '';
+  }
+
   function ring(percent, big, small) {
     const r = 54, c = 2 * Math.PI * r, off = c * (1 - Math.min(1, percent / 100));
     return `<div class="ring"><svg width="128" height="128" viewBox="0 0 128 128">
@@ -89,5 +100,5 @@ RWG.ui = (function () {
     setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(8px)'; t.style.transition = '.3s'; setTimeout(() => t.remove(), 300); }, 2600);
   }
 
-  return { esc, money, moneyK, initials, fmtDate, fmtDateTime, fmtRelative, avatar, tierChip, scoreBar, stageChip, isCallback, callbackChip, ring, toast, tierFill };
+  return { esc, money, moneyK, initials, fmtDate, fmtDateTime, fmtRelative, avatar, tierChip, scoreBar, stageChip, isCallback, callbackChip, isClickedNoSignup, clickedChip, ring, toast, tierFill };
 })();

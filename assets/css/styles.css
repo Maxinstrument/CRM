@@ -284,6 +284,7 @@ input::placeholder,textarea::placeholder{color:#9aa6b4;}
 
 .pill-soft{background:rgba(14,36,64,.05);color:var(--muted);padding:3px 9px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap;}
 .chip-callback{background:rgba(178,58,72,.12);color:var(--bad);border:1px solid rgba(178,58,72,.4);}
+.chip-clicked{background:rgba(14,36,64,.07);color:var(--navy);border:1px solid rgba(14,36,64,.25);}
 
 /* ============================================================
    Filter / sort toolbar (agent)
