@@ -54,12 +54,23 @@ RWG.views.agent = (function () {
   function today(user) {
     const leads = D.leadsFor(user.id);
     const appts = leads.filter(l => l.stage === 'Appointment Set' && l.apptDate).sort((a, b) => a.apptDate - b.apptDate);
-    const callbacks = leads.filter(l => l.disposition === 'Call Back' && !['Appointment Set', 'Appointment Kept', 'Opportunity Opened', 'No Opportunity'].includes(l.stage));
+    const nowTs = Date.now();
+    const eod = new Date(); eod.setHours(23, 59, 59, 999); const endToday = eod.getTime();
+    const liveStage = (l) => !['Appointment Set', 'Appointment Kept', 'Opportunity Opened', 'No Opportunity'].includes(l.stage);
+    const callbacks = leads.filter(l => liveStage(l) && ((l.callbackAt && l.callbackAt <= endToday) || (!l.callbackAt && l.disposition === 'Call Back')))
+      .sort((a, b) => (a.callbackAt || Infinity) - (b.callbackAt || Infinity));
     const fresh = leads.filter(l => l.stage === 'New').sort((a, b) => b._score.score - a._score.score);
 
     const apptRow = (l) => `<div class="lead-card" data-action="open-lead" data-id="${l.id}" style="cursor:pointer">
         <div class="lc-top"><span class="lc-name">${U.esc(D.fullName(l))}</span>${U.tierChip(l._score)}</div>
         <div class="lc-meta"><span>📅 ${U.fmtDateTime(l.apptDate)}</span></div></div>`;
+    const cbRow = (l) => {
+      const t = l.callbackAt, overdue = t && t < nowTs;
+      const when = t ? (overdue ? '⚠ Overdue · ' : '') + U.fmtDateTime(t) : 'No time set';
+      return `<div class="lead-card" data-action="open-lead" data-id="${l.id}" style="cursor:pointer">
+        <div class="lc-top"><span class="lc-name">${U.esc(D.fullName(l))}</span>${U.tierChip(l._score)}</div>
+        <div class="lc-meta"><span style="${overdue ? 'color:var(--bad);font-weight:700' : ''}">📞 ${U.esc(when)}</span>${l.phone ? ` · <a href="tel:${U.esc(l.phone)}" onclick="event.stopPropagation()">${U.esc(l.phone)}</a>` : ''}</div></div>`;
+    };
 
     const block = (title, color, items, render, empty) => `
       <div class="card mb-16">
@@ -69,7 +80,7 @@ RWG.views.agent = (function () {
       </div>`;
 
     return block('Upcoming appointments', '#C2A14D', appts, apptRow, 'No appointments booked yet — go set some!')
-      + block('Callbacks to follow up', '#B0691F', callbacks, leadCard, 'No pending callbacks.')
+      + block('Callbacks due', '#B0691F', callbacks, cbRow, 'No callbacks due. Nice and clear.')
       + block('Fresh leads to work (best first)', '#2E7D5B', fresh.slice(0, 8), leadCard, 'No new leads — nice work clearing them!');
   }
 

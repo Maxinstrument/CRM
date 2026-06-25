@@ -179,7 +179,7 @@ RWG.data = (function () {
       act.id = subId('a'); act.at = act.at || now();
       l.activities = l.activities || [];
       l.activities.push(act);
-      if (act.type === 'Call' || act.type === 'Voicemail') l.attempts = (l.attempts || 0) + 1;
+      if (act.type === 'Call' || act.type === 'Voicemail') { l.attempts = (l.attempts || 0) + 1; if (l.callbackAt) l.callbackAt = null; }
       if (act.disposition) l.disposition = act.disposition;
       if (act.reached && (l.stage === 'New' || l.stage === 'Attempting')) l.stage = 'Reached';
       else if (l.stage === 'New' && act.type === 'Call') l.stage = 'Attempting';
@@ -197,6 +197,20 @@ RWG.data = (function () {
       if (extra && extra.outcome) l.outcome = extra.outcome;
       if (stage === 'Appointment Set') l.disposition = 'Appointment Set';
       logChange(l, by, changes, note);
+      onChange(); saveLead(l);
+      return withScore(l);
+    },
+
+    // Schedule a future callback task (shows in the agent's Today queue when due)
+    scheduleCallback(leadId, ts, note, by) {
+      const l = findLead(leadId); if (!l) return;
+      l.callbackAt = ts;
+      l.disposition = 'Call Back';
+      l.attempts = (l.attempts || 0) + 1;
+      if (l.stage === 'New' || l.stage === 'Attempting') l.stage = 'Reached';
+      l.activities = l.activities || [];
+      l.activities.push({ id: subId('a'), at: now(), type: 'Call', disposition: 'Call Back', reached: true, by: by || null,
+        note: 'Callback scheduled for ' + new Date(ts).toLocaleString('en-US') + (note ? ' — ' + note : '') });
       onChange(); saveLead(l);
       return withScore(l);
     },

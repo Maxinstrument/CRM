@@ -193,7 +193,8 @@ RWG.views.drawer = function (leadId, opts) {
               <input type="checkbox" id="act-reached" style="width:auto"> Counts as a <b style="color:var(--good)">reach</b></label></div>
         </div>
         <textarea id="act-note" placeholder="Notes from the call…"></textarea>
-        <div class="mt-8" style="display:flex;justify-content:flex-end">
+        <div class="mt-8" style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="btn btn-ghost btn-sm" data-action="toggle-callback" data-id="${l.id}">📞 Log a Callback</button>
           <button class="btn btn-navy btn-sm" data-action="save-activity" data-id="${l.id}">＋ Log it</button>
         </div>
       </div>
@@ -207,8 +208,18 @@ RWG.views.drawer = function (leadId, opts) {
         </div>
       </div>
 
+      <div id="callback-row" hidden class="card tight mt-16" style="border-color:var(--warn)">
+        <label class="lbl">Callback date &amp; time</label>
+        <input type="datetime-local" id="callback-dt">
+        <div class="mt-8" style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-quiet btn-sm" data-action="toggle-callback">Cancel</button>
+          <button class="btn btn-gold btn-sm" data-action="confirm-callback" data-id="${l.id}">Schedule callback</button>
+        </div>
+      </div>
+
       <div class="section-title">Pipeline</div>
       ${l.apptDate ? `<p class="muted" style="font-size:13px;margin:-2px 0 12px">📅 Appointment: <b style="color:var(--navy)">${U.fmtDateTime(l.apptDate)}</b></p>` : ''}
+      ${l.callbackAt ? `<p class="muted" style="font-size:13px;margin:-2px 0 12px">📞 Callback: <b style="color:var(--navy)">${U.fmtDateTime(l.callbackAt)}</b></p>` : ''}
       <div class="flex wrap-gap">${stageActions}</div>
 
       <div class="section-title">Activity timeline</div>

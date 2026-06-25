@@ -495,6 +495,15 @@ RWG.app = (function () {
     U.toast('Appointment set 🎉', true);
     refreshDrawer(); renderMain();
   }
+  function confirmCallback(id) {
+    const v = $('#callback-dt') ? $('#callback-dt').value : '';
+    if (!v) { U.toast('Pick a date & time first'); return; }
+    const ts = new Date(v).getTime();
+    const note = $('#act-note') ? $('#act-note').value.trim() : '';
+    D.scheduleCallback(id, ts, note, RWG.auth.currentUser().id);
+    U.toast('Callback scheduled 📞', true);
+    refreshDrawer(); renderMain();
+  }
   function graduate(id, stage) {
     const extra = (stage === 'No Opportunity' || stage === 'Opportunity Opened') ? { outcome: stage } : {};
     D.setStage(id, stage, extra, RWG.auth.currentUser().id);
@@ -734,6 +743,8 @@ RWG.app = (function () {
       case 'save-activity': saveActivity(el.dataset.id); break;
       case 'toggle-appt': { const r = $('#appt-row'); if (r) r.hidden = !r.hidden; break; }
       case 'confirm-appt': confirmAppt(el.dataset.id); break;
+      case 'toggle-callback': { const r = $('#callback-row'); if (r) r.hidden = !r.hidden; break; }
+      case 'confirm-callback': confirmCallback(el.dataset.id); break;
       case 'graduate': graduate(el.dataset.id, el.dataset.stage); break;
       case 'pick-stage': {   // stacked-card stage menu (mobile) → same path as a board drag
         document.querySelectorAll('.pop-panel:not([hidden])').forEach(p => p.hidden = true);
