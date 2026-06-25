@@ -388,7 +388,7 @@ table.data tr.row-sel:hover{background:rgba(194,161,77,.18);}
    Table
    ============================================================ */
 .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
-table.data{width:100%;border-collapse:collapse;font-size:13.5px;}
+table.data{min-width:100%;border-collapse:collapse;font-size:13.5px;}
 table.data thead th{
   text-align:left;padding:13px 14px;background:#FAF8F2;color:var(--muted);
   font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;
@@ -396,12 +396,13 @@ table.data thead th{
 }
 table.data thead th:hover{color:var(--navy);}
 table.data thead th .arrow{opacity:.4;margin-left:3px;}
-table.data tbody td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle;}
+table.data tbody td{padding:7px 14px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap;}
 table.data tbody tr{transition:background .12s;cursor:pointer;}
 table.data tbody tr:hover{background:rgba(194,161,77,.06);}
 table.data tbody tr:last-child td{border-bottom:none;}
 .cell-name{font-weight:600;color:var(--navy);}
 .cell-sub{color:var(--muted);font-size:12px;}
+table.data .cell-name,table.data .cell-sub{line-height:1.25;}
 .score-bar{display:inline-flex;align-items:center;gap:8px;}
 .score-bar .track{width:46px;height:6px;border-radius:4px;background:rgba(14,36,64,.1);overflow:hidden;}
 .score-bar .fill{height:100%;border-radius:4px;}
