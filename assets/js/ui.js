@@ -55,6 +55,17 @@ RWG.ui = (function () {
     return `<span class="stage-chip ${RWG.data.stageClass[stage] || ''}">${esc(stage)}</span>`;
   }
 
+  // Callback flag: detected from the "CALLBACK REQUESTED" marker in notes (or an explicit field),
+  // so it works on import without an extra column. Kept separate from the quality tier.
+  function isCallback(l) {
+    return !!(l && (l.callbackRequested || /callback requested/i.test(l.notes || '')));
+  }
+  function callbackChip(l) {
+    return isCallback(l)
+      ? `<span class="chip chip-callback" title="This person asked us to call them to schedule an appointment">📞 Callback</span>`
+      : '';
+  }
+
   function ring(percent, big, small) {
     const r = 54, c = 2 * Math.PI * r, off = c * (1 - Math.min(1, percent / 100));
     return `<div class="ring"><svg width="128" height="128" viewBox="0 0 128 128">
@@ -78,5 +89,5 @@ RWG.ui = (function () {
     setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(8px)'; t.style.transition = '.3s'; setTimeout(() => t.remove(), 300); }, 2600);
   }
 
-  return { esc, money, moneyK, initials, fmtDate, fmtDateTime, fmtRelative, avatar, tierChip, scoreBar, stageChip, ring, toast, tierFill };
+  return { esc, money, moneyK, initials, fmtDate, fmtDateTime, fmtRelative, avatar, tierChip, scoreBar, stageChip, isCallback, callbackChip, ring, toast, tierFill };
 })();

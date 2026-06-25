@@ -26,7 +26,7 @@ RWG.leadtable = (function () {
   function columnDefs() {
     return {
       name:  { label: 'Lead', dir: 'asc', filterable: false, cmp: (a, b) => D.fullName(a).localeCompare(D.fullName(b)),
-               cell: (l) => `<div class="cell-name">${U.esc(D.fullName(l))}${l.returning ? ` <span class="ret-flag" title="Returning · ${l.seminarCount || 2} seminars">🔁</span>` : ''}</div><div class="cell-sub">${U.esc(l.employer || '')}</div>` },
+               cell: (l) => `<div class="cell-name">${U.esc(D.fullName(l))}${l.returning ? ` <span class="ret-flag" title="Returning · ${l.seminarCount || 2} seminars">🔁</span>` : ''} ${U.callbackChip(l)}</div><div class="cell-sub">${U.esc(l.employer || '')}</div>` },
       tier:  { label: 'Tier', dir: 'desc', filterable: true, fval: (l) => l._score.tier,
                cmp: (a, b) => tierRank(a) - tierRank(b), cell: (l) => U.tierChip(l._score) },
       score: { label: 'Score', dir: 'desc', filterable: true, fval: (l) => String(l._score.score),
@@ -45,6 +45,9 @@ RWG.leadtable = (function () {
       returning: { label: 'Returning', dir: 'desc', filterable: true, fval: (l) => l.returning ? 'Returning' : 'First time',
                cmp: (a, b) => ((a.seminarCount || 1) - (b.seminarCount || 1)),
                cell: (l) => l.returning ? `<span class="chip tier-gold" title="${l.seminarCount || 2} seminars">🔁 ×${l.seminarCount || 2}</span>` : '<span class="cell-sub">—</span>' },
+      callback: { label: 'Callback', dir: 'desc', filterable: true, fval: (l) => U.isCallback(l) ? 'Callback requested' : 'No',
+               cmp: (a, b) => (U.isCallback(a) ? 1 : 0) - (U.isCallback(b) ? 1 : 0),
+               cell: (l) => U.isCallback(l) ? U.callbackChip(l) : '<span class="cell-sub">—</span>' },
       yos:   { label: 'YOS / Age', dir: 'desc', tdClass: 'num', filterable: true, fval: (l) => l.yos == null ? '(none)' : String(l.yos),
                cmp: (a, b) => (a.yos || 0) - (b.yos || 0), cell: (l) => `${l.yos ?? '—'} / ${l.age ?? '—'}` },
       afc:   { label: 'AFC', dir: 'desc', filterable: true, fval: (l) => l.afc == null ? '(none)' : String(l.afc),
@@ -58,7 +61,7 @@ RWG.leadtable = (function () {
   }
 
   function columnOrder(showOwner) {
-    const base = ['name', 'tier', 'score', 'stage', 'disposition', 'plan', 'list', 'returning', 'yos', 'afc', 'attempts', 'touch'];
+    const base = ['name', 'tier', 'score', 'stage', 'disposition', 'plan', 'list', 'returning', 'callback', 'yos', 'afc', 'attempts', 'touch'];
     if (showOwner) base.splice(3, 0, 'owner');   // Owner right after Score
     return base;
   }
@@ -179,7 +182,7 @@ RWG.leadtable = (function () {
     return `<div class="lead-row-card${isSel ? ' sel' : ''}" data-action="open-lead" data-id="${l.id}">
       <div class="lrc-top">
         ${checkbox}
-        <div class="lrc-id"><div class="lrc-name">${U.esc(D.fullName(l))}${ret}</div><div class="cell-sub">${U.esc(l.employer || '—')}</div></div>
+        <div class="lrc-id"><div class="lrc-name">${U.esc(D.fullName(l))}${ret} ${U.callbackChip(l)}</div><div class="cell-sub">${U.esc(l.employer || '—')}</div></div>
         ${U.tierChip(s)}
       </div>
       <div class="lrc-grid">
@@ -283,7 +286,7 @@ RWG.leadtable = (function () {
     ['Owner', l => { const o = D.user(l.assignedTo); return o ? o.name : 'Unassigned'; }],
     ['Plan Type', l => l.planType], ['Member Class', l => l.memberClass],
     ['Age', l => l.age], ['Years of Service', l => l.yos], ['AFC/Salary', l => l.afc],
-    ['Employer', l => l.employer], ['Attended', l => l.attended], ['Attempts', l => l.attempts || 0],
+    ['Employer', l => l.employer], ['Attended', l => l.attended], ['Callback Requested', l => U.isCallback(l) ? 'Yes' : ''], ['Attempts', l => l.attempts || 0],
     ['Last Activity', l => { const a = (l.activities || [])[(l.activities || []).length - 1]; return a ? new Date(a.at).toLocaleString('en-US') : ''; }],
     ['Appointment', l => l.apptDate ? new Date(l.apptDate).toLocaleString('en-US') : ''],
     ['Lead List', l => l.listName], ['Top Reason', l => l._score.headline]

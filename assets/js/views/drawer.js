@@ -96,12 +96,21 @@ RWG.views.drawer = function (leadId, opts) {
 
   const appLines = (l.appearances || []).slice().sort((a, b) => a.at - b.at)
     .map(ap => `<div class="cell-sub">• ${U.esc(ap.listName || 'List')} — ${U.fmtRelative(ap.at)}</div>`).join('');
+  const callbackBanner = U.isCallback(l) ? `
+    <div class="card tight" style="background:rgba(178,58,72,.08);border-color:rgba(178,58,72,.5);margin-bottom:14px">
+      <div style="font-weight:700;color:var(--bad)">📞 Callback requested</div>
+      <div class="cell-sub" style="margin:4px 0 0">This person asked us to call them to schedule an appointment (June 2026 seminar). Reach out to them first.</div>
+    </div>` : '';
   const returningBanner = l.returning ? `
     <div class="card tight" style="background:rgba(194,161,77,.1);border-color:rgba(194,161,77,.5);margin-bottom:14px">
       <div style="font-weight:700;color:var(--navy)">🔁 Returning attendee · ${l.seminarCount || 2} seminars</div>
       <div class="cell-sub" style="margin:4px 0 6px">This person was already in your database before this list — they keep showing up, so they're worth a tailored approach. Their full call history is below.</div>
       ${appLines}
     </div>` : '';
+
+  const notesSection = (l.notes && l.notes.trim()) ? `
+      <div class="section-title">Notes</div>
+      <div class="card tight" style="white-space:pre-wrap;font-size:13px;line-height:1.55;color:var(--ink)">${U.esc(l.notes)}</div>` : '';
 
   const assignRow = isAdmin ? `
     <div class="detail-item"><div class="k">Assigned to</div>
@@ -132,7 +141,7 @@ RWG.views.drawer = function (leadId, opts) {
     <div class="drawer-head">
       <div class="dh-top">
         <div>
-          <div class="tag-row mb-8">${U.tierChip(s, true)} ${U.stageChip(l.stage)}</div>
+          <div class="tag-row mb-8">${U.tierChip(s, true)} ${U.stageChip(l.stage)} ${U.callbackChip(l)}</div>
           <h2>${U.esc(D.fullName(l))}</h2>
           <div class="dh-sub">${U.esc(l.employer || '')}${owner ? ' · ' + U.esc(owner.name) : ''}</div>
         </div>
@@ -143,7 +152,7 @@ RWG.views.drawer = function (leadId, opts) {
       </div>
     </div>
     <div class="drawer-body">
-      ${returningBanner}
+      ${callbackBanner}${returningBanner}
       <div class="section-title">Contact ${editedNote}</div>
       <div class="detail-grid">
         ${detail('Phone', `<a href="tel:${U.esc(l.phone)}" style="color:var(--navy)">${U.esc(l.phone || '—')}</a>`)}
@@ -165,6 +174,7 @@ RWG.views.drawer = function (leadId, opts) {
         ${assignRow}
       </div>
 
+      ${notesSection}
       <div class="section-title">Why this score · ${s.score}/100</div>
       <div class="card tight" style="background:rgba(194,161,77,.06);border-color:rgba(194,161,77,.3)">
         <ul style="margin:0;padding-left:6px;list-style:none">${reasons}</ul>
