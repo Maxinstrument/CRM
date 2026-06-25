@@ -772,14 +772,14 @@ RWG.app = (function () {
         f.colFilters = f.colFilters || {};
         f.colFilters[key] = RWG.leadtable.distinctValues(c.base, key);
         document.querySelectorAll(`input[data-colfilter="${key}"]`).forEach(cb => cb.checked = true);
-        clearSelection(); refreshLeadsRows(); updateBulkUI(); break;
+        clearSelection(); refreshLeadsBody(); updateBulkUI(); break;
       }
       case 'colfilter-clear': {
         const key = el.dataset.col, f = currentFilter();
         if (f.colFilters) delete f.colFilters[key];
         document.querySelectorAll(`input[data-colfilter="${key}"]`).forEach(cb => cb.checked = false);
         clearSelection();
-        if (document.querySelector('#leads-body tbody')) { refreshLeadsRows(); updateBulkUI(); } else renderMain();
+        refreshLeadsBody(); updateBulkUI();
         break;
       }
       case 'bulk-assign': {
@@ -1000,7 +1000,7 @@ RWG.app = (function () {
         const i = arr.indexOf(val); if (e.target.checked) { if (i < 0) arr.push(val); } else if (i >= 0) arr.splice(i, 1);
         if (!arr.length) delete f.colFilters[key];
         clearSelection();
-        refreshLeadsRows(); updateBulkUI();   // rows only → header popover stays open
+        refreshLeadsBody(); updateBulkUI();   // rebuild the table so the filtered leads always repaint
         return;
       }
       if (e.target.matches('input[data-sel]')) {
