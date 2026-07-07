@@ -85,9 +85,11 @@ RWG.app = (function () {
   const currentCols = () => isAdminLeads() ? state.adminCols : state.agentCols;
   const currentColsKey = () => isAdminLeads() ? 'rwg_cols_admin_v3' : 'rwg_cols_agent_v3';
 
-  // Leads + filter for whatever lead table is currently on screen
+  // Leads + filter for whatever lead table is currently on screen.
+  // effectiveUser (not currentUser): in View As mode the table must show the
+  // impersonated agent's leads, or filter repaints come up empty for admins.
   function currentTableLeads() {
-    const u = RWG.auth.currentUser();
+    const u = effectiveUser();
     const adminLeads = isAdminLeads();
     const base = adminLeads ? D.leads() : D.leadsFor(u.id);
     const f = Object.assign(newFilter(), currentFilter(), { search: state.search });
