@@ -343,18 +343,21 @@ RWG.views.admin = (function () {
         ${statCard('Dials', (t.dials || 0), '📞')}
       </div>
       <div class="table-wrap"><table class="data">${head}<tbody>${rows || empty}${teamRow}</tbody></table></div>
-      ${apptTierTable(rep)}`;
+      ${apptTierTable(rep, status)}`;
   }
 
   // Appointments set per agent, split by the lead's quality tier (under the main weekly table).
-  function apptTierTable(rep) {
+  function apptTierTable(rep, status) {
     const TIERS = ['GOLD', 'HIGH', 'MEDIUM', 'LOW'];
     const tm = RWG.scoring.tierMeta;
     const agents = rep.agents || [];
     const heading = `<h3 style="font-size:16px;margin:22px 0 2px">Appointments set by lead tier</h3>
       <div class="cell-sub mb-8">Which quality of lead each agent booked this week.</div>`;
     if (!agents.length || !agents.some(a => a.apptTiers)) {
-      return heading + `<div class="muted" style="padding:14px 2px;font-size:13px">The tier breakdown isn't stored for this week. It was frozen before this report existed; new weeks capture it automatically.</div>`;
+      const backfill = status === 'final'
+        ? `<div style="margin-top:10px"><button class="btn btn-ghost btn-sm" data-action="report-backfill-tiers">↻ Backfill from history</button></div>`
+        : '';
+      return heading + `<div class="muted" style="padding:14px 2px;font-size:13px">The tier breakdown isn't stored for this week; it was frozen before this report existed.${backfill ? ' You can rebuild it from the lead histories:' : ''}</div>${backfill}`;
     }
     const zt = { GOLD: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
     const thead = `<thead><tr><th>Agent</th>${TIERS.map(k => `<th class="num"><span class="tier-dot ${tm[k].dot}"></span> ${tm[k].label}</th>`).join('')}<th class="num">Total</th></tr></thead>`;

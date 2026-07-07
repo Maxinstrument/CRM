@@ -929,6 +929,24 @@ RWG.app = (function () {
       case 'report-next': { const A = RWG.analytics; if (state.reportWeekStart == null) state.reportWeekStart = curWeekStart(); const n = A.weekStartOf(state.reportWeekStart + 10 * 86400000); if (n <= curWeekStart()) { state.reportWeekStart = n; loadOrPaintReport(); } break; }
       case 'report-this': state.reportWeekStart = curWeekStart(); loadOrPaintReport(); break;
       case 'report-export': if (RWG.auth.isAdmin()) exportReport(); break;
+      case 'report-backfill-tiers': {   // add the tier split to a snapshot frozen before the feature existed
+        if (!RWG.auth.isAdmin()) break;
+        const A = RWG.analytics, ws = state.reportWeekStart;
+        if (ws == null || ws >= curWeekStart()) break;             // current week is always live
+        const wid = A.weekId(ws), snap = state.reportCache[wid];
+        if (!snap) break;
+        const live = A.weeklyReport(A.weekRangeFor(ws));            // recompute from surviving lead history
+        const zero = () => ({ GOLD: 0, HIGH: 0, MEDIUM: 0, LOW: 0 });
+        const byUid = {}; (live.agents || []).forEach(a => { byUid[a.uid] = a.apptTiers; });
+        (snap.agents || []).forEach(a => { a.apptTiers = byUid[a.uid] || zero(); });
+        snap.team = snap.team || {};
+        snap.team.apptTiers = (snap.agents || []).reduce((s, a) => { ['GOLD', 'HIGH', 'MEDIUM', 'LOW'].forEach(k => s[k] += (a.apptTiers[k] || 0)); return s; }, zero());
+        D.saveReport(wid, snap).catch(e => console.error('backfill save:', e));
+        state.reportCache[wid] = snap;
+        paintReport(snap, A.weekLabel(ws), 'final');
+        U.toast('Tier breakdown rebuilt from lead history', true);
+        break;
+      }
       case 'approve-user': D.approveUser(el.dataset.id); U.toast('Agent approved', true); renderShell(RWG.auth.currentUser()); break;
       case 'deny-user': D.denyUser(el.dataset.id); U.toast('Request removed'); renderShell(RWG.auth.currentUser()); break;
       case 'load-sample-list': loadSampleList(); break;
