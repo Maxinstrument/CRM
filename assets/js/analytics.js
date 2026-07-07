@@ -121,10 +121,13 @@ RWG.analytics = (function () {
   function weeklyReport(range) {
     const leads = RWG.data.leadsRaw();
     const users = RWG.data.users();
+    const cfg = RWG.data.scoringConfig();
     const inR = (t) => t >= range.start && t <= range.end;
+    const zeroTiers = () => ({ GOLD: 0, HIGH: 0, MEDIUM: 0, LOW: 0 });
     const tally = {};
-    const ensure = (uid) => tally[uid] || (tally[uid] = { uid, dials: 0, reaches: 0, texts: 0, emails: 0, apptSet: 0, apptKept: 0, oppOpened: 0, noOpp: 0, touched: new Set() });
+    const ensure = (uid) => tally[uid] || (tally[uid] = { uid, dials: 0, reaches: 0, texts: 0, emails: 0, apptSet: 0, apptKept: 0, oppOpened: 0, noOpp: 0, apptTiers: zeroTiers(), touched: new Set() });
     leads.forEach(l => {
+      let tier = null;   // lead tier, computed once on the first appointment this week
       (l.activities || []).forEach(a => {
         if (!a.by || !inR(a.at)) return;
         const t = ensure(a.by);
@@ -139,7 +142,11 @@ RWG.analytics = (function () {
         const t = ensure(h.by);
         (h.changes || []).forEach(c => {
           if (c.label !== 'Stage') return;
-          if (c.to === 'Appointment Set') t.apptSet++;
+          if (c.to === 'Appointment Set') {
+            t.apptSet++;
+            if (tier == null) tier = ((RWG.scoring.scoreLead(l, cfg) || {}).tier) || 'LOW';
+            if (t.apptTiers[tier] != null) t.apptTiers[tier]++;
+          }
           else if (c.to === 'Appointment Kept') t.apptKept++;
           else if (c.to === 'Opportunity Opened') t.oppOpened++;
           else if (c.to === 'No Opportunity') t.noOpp++;
@@ -150,11 +157,13 @@ RWG.analytics = (function () {
     const nameOf = (uid) => { const u = users.find(x => x.id === uid); return (u && u.name) || 'Former agent'; };
     const agents = Object.keys(tally).map(uid => {
       const t = tally[uid];
-      return { uid, name: nameOf(uid), dials: t.dials, reaches: t.reaches, texts: t.texts, emails: t.emails, apptSet: t.apptSet, apptKept: t.apptKept, oppOpened: t.oppOpened, noOpp: t.noOpp, leadsTouched: t.touched.size, reachRate: t.dials ? Math.round((t.reaches / t.dials) * 100) : 0 };
+      return { uid, name: nameOf(uid), dials: t.dials, reaches: t.reaches, texts: t.texts, emails: t.emails, apptSet: t.apptSet, apptKept: t.apptKept, oppOpened: t.oppOpened, noOpp: t.noOpp, apptTiers: t.apptTiers, leadsTouched: t.touched.size, reachRate: t.dials ? Math.round((t.reaches / t.dials) * 100) : 0 };
     });
-    RWG.data.agents().forEach(a => { if (!tally[a.id]) agents.push({ uid: a.id, name: a.name, dials: 0, reaches: 0, texts: 0, emails: 0, apptSet: 0, apptKept: 0, oppOpened: 0, noOpp: 0, leadsTouched: 0, reachRate: 0 }); });
+    RWG.data.agents().forEach(a => { if (!tally[a.id]) agents.push({ uid: a.id, name: a.name, dials: 0, reaches: 0, texts: 0, emails: 0, apptSet: 0, apptKept: 0, oppOpened: 0, noOpp: 0, apptTiers: zeroTiers(), leadsTouched: 0, reachRate: 0 }); });
     agents.sort((x, y) => y.apptSet - x.apptSet || y.reaches - x.reaches || y.dials - x.dials || x.name.localeCompare(y.name));
-    const team = agents.reduce((s, a) => ({ dials: s.dials + a.dials, reaches: s.reaches + a.reaches, apptSet: s.apptSet + a.apptSet, apptKept: s.apptKept + a.apptKept, oppOpened: s.oppOpened + a.oppOpened }), { dials: 0, reaches: 0, apptSet: 0, apptKept: 0, oppOpened: 0 });
+    const team = agents.reduce((s, a) => ({ dials: s.dials + a.dials, reaches: s.reaches + a.reaches, apptSet: s.apptSet + a.apptSet, apptKept: s.apptKept + a.apptKept, oppOpened: s.oppOpened + a.oppOpened,
+      apptTiers: { GOLD: s.apptTiers.GOLD + (a.apptTiers ? a.apptTiers.GOLD : 0), HIGH: s.apptTiers.HIGH + (a.apptTiers ? a.apptTiers.HIGH : 0), MEDIUM: s.apptTiers.MEDIUM + (a.apptTiers ? a.apptTiers.MEDIUM : 0), LOW: s.apptTiers.LOW + (a.apptTiers ? a.apptTiers.LOW : 0) } }),
+      { dials: 0, reaches: 0, apptSet: 0, apptKept: 0, oppOpened: 0, apptTiers: zeroTiers() });
     team.reachRate = team.dials ? Math.round((team.reaches / team.dials) * 100) : 0;
     team.goalMin = APPT_GOAL_MIN; team.goalMax = APPT_GOAL_MAX;
     return { team, agents };

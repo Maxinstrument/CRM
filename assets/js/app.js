@@ -299,10 +299,11 @@ RWG.app = (function () {
   function csvCell(v) { v = (v == null) ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   function exportReport() {
     const lr = state.lastReport; if (!lr) return;
-    const cols = ['Agent', 'Dials', 'Reaches', 'Reach %', 'Appts set', 'Appts kept', 'Opportunities', 'Leads touched'];
-    const rows = lr.rep.agents.map(a => [a.name, a.dials, a.reaches, a.reachRate + '%', a.apptSet, a.apptKept, a.oppOpened, a.leadsTouched]);
+    const cols = ['Agent', 'Dials', 'Reaches', 'Reach %', 'Appts set', 'Appts GOLD', 'Appts HIGH', 'Appts MEDIUM', 'Appts LOW', 'Appts kept', 'Opportunities', 'Leads touched'];
+    const tiers = (o) => { const at = o.apptTiers || {}; return [at.GOLD || 0, at.HIGH || 0, at.MEDIUM || 0, at.LOW || 0]; };
+    const rows = lr.rep.agents.map(a => [a.name, a.dials, a.reaches, a.reachRate + '%', a.apptSet].concat(tiers(a), [a.apptKept, a.oppOpened, a.leadsTouched]));
     const t = lr.rep.team;
-    rows.push(['Team total', t.dials, t.reaches, t.reachRate + '%', t.apptSet, t.apptKept, t.oppOpened, '']);
+    rows.push(['Team total', t.dials, t.reaches, t.reachRate + '%', t.apptSet].concat(tiers(t), [t.apptKept, t.oppOpened, '']));
     const csv = [cols].concat(rows).map(r => r.map(csvCell).join(',')).join('\r\n');
     downloadCSV('RWG_weekly_report_' + RWG.analytics.weekId(state.reportWeekStart) + '.csv', csv);
   }

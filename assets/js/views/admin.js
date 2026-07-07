@@ -342,7 +342,30 @@ RWG.views.admin = (function () {
         ${statCard('Reaches', (t.reaches || 0), '🎯')}
         ${statCard('Dials', (t.dials || 0), '📞')}
       </div>
-      <div class="table-wrap"><table class="data">${head}<tbody>${rows || empty}${teamRow}</tbody></table></div>`;
+      <div class="table-wrap"><table class="data">${head}<tbody>${rows || empty}${teamRow}</tbody></table></div>
+      ${apptTierTable(rep)}`;
+  }
+
+  // Appointments set per agent, split by the lead's quality tier (under the main weekly table).
+  function apptTierTable(rep) {
+    const TIERS = ['GOLD', 'HIGH', 'MEDIUM', 'LOW'];
+    const tm = RWG.scoring.tierMeta;
+    const agents = rep.agents || [];
+    const heading = `<h3 style="font-size:16px;margin:22px 0 2px">Appointments set by lead tier</h3>
+      <div class="cell-sub mb-8">Which quality of lead each agent booked this week.</div>`;
+    if (!agents.length || !agents.some(a => a.apptTiers)) {
+      return heading + `<div class="muted" style="padding:14px 2px;font-size:13px">The tier breakdown isn't stored for this week. It was frozen before this report existed; new weeks capture it automatically.</div>`;
+    }
+    const zt = { GOLD: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+    const thead = `<thead><tr><th>Agent</th>${TIERS.map(k => `<th class="num"><span class="tier-dot ${tm[k].dot}"></span> ${tm[k].label}</th>`).join('')}<th class="num">Total</th></tr></thead>`;
+    const trows = agents.map(a => {
+      const at = a.apptTiers || zt;
+      return `<tr><td style="font-weight:600">${U.esc(a.name)}</td>${TIERS.map(k => `<td class="num">${at[k] ? `<b>${at[k]}</b>` : '<span class="muted">—</span>'}</td>`).join('')}<td class="num"><b>${a.apptSet || 0}</b></td></tr>`;
+    }).join('');
+    const tt = (rep.team && rep.team.apptTiers) || TIERS.reduce((s, k) => { s[k] = agents.reduce((n, a) => n + ((a.apptTiers || zt)[k] || 0), 0); return s; }, {});
+    const teamRow = `<tr style="border-top:2px solid var(--line-strong);font-weight:700">
+      <td>Team total</td>${TIERS.map(k => `<td class="num">${tt[k] || 0}</td>`).join('')}<td class="num">${(rep.team && rep.team.apptSet) || 0}</td></tr>`;
+    return heading + `<div class="table-wrap"><table class="data">${thead}<tbody>${trows}${teamRow}</tbody></table></div>`;
   }
 
   function render(view, user, ctx) {
