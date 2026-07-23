@@ -17,6 +17,17 @@ RWG.data = (function () {
   const BOARD_STAGES = ['New', 'Attempting', 'Reached', 'Appointment Set', 'Appointment Kept'];
   const DISPOSITIONS = ['Left Voicemail', 'No Answer', 'Bad Number', 'Not Interested', 'Call Back', 'Reached (pitched)', 'Appointment Set', 'Unable to Reach'];
   const ACTIVITY_TYPES = ['Call', 'Text', 'Email', 'Voicemail', 'Other'];
+  // What counts as an outreach attempt. 'Other' is deliberately excluded: the
+  // CRM writes system notes (e.g. "Appointment scheduled for…") as Other, and a
+  // system note is not an attempt to reach someone.
+  const OUTREACH_TYPES = ['Call', 'Voicemail', 'Text', 'Email'];
+  // Stages you can only arrive at by actually making contact. A lead sitting in
+  // one of these with 0 attempts is self-contradictory, so the count is floored
+  // at 1. Deliberately a FLOOR and not an increment: a logged call that results
+  // in an appointment is one attempt, not two. 'No Opportunity' is excluded —
+  // a bad number or an unreachable lead can land there without any contact.
+  const CONTACTED_STAGES = ['Reached', 'Appointment Set', 'Appointment Kept', 'Opportunity Opened'];
+  const floorAttempts = (l) => { if (CONTACTED_STAGES.indexOf(l.stage) >= 0 && (l.attempts || 0) < 1) l.attempts = 1; };
   const PLAN_TYPES = ['Pension Plan', 'Investment Plan', 'DROP', "Don't Know"];
   const ATTENDED_OPTS = ['Yes', 'No', 'Unknown'];
   const MEMBER_CLASSES = ['Regular', 'Special Risk'];
@@ -179,12 +190,46 @@ RWG.data = (function () {
       act.id = subId('a'); act.at = act.at || now();
       l.activities = l.activities || [];
       l.activities.push(act);
-      if (act.type === 'Call' || act.type === 'Voicemail') { l.attempts = (l.attempts || 0) + 1; if (l.callbackAt) l.callbackAt = null; }
+      // Any real outreach counts as an attempt (call, voicemail, text, email).
+      // Only a call or voicemail clears a pending callback task, though — an
+      // emailed reply doesn't mean the scheduled call-back has been serviced.
+      if (OUTREACH_TYPES.indexOf(act.type) >= 0) l.attempts = (l.attempts || 0) + 1;
+      if (act.type === 'Call' || act.type === 'Voicemail') { if (l.callbackAt) l.callbackAt = null; }
       if (act.disposition) l.disposition = act.disposition;
       if (act.reached && (l.stage === 'New' || l.stage === 'Attempting')) l.stage = 'Reached';
       else if (l.stage === 'New' && act.type === 'Call') l.stage = 'Attempting';
+      floorAttempts(l);
       onChange(); saveLead(l);
       return withScore(l);
+    },
+
+    // Maintenance (admin): bring `attempts` in line with the outreach actually
+    // logged. Idempotent, and it never LOWERS a count — leads imported with a
+    // vendor "Number of Attempts" carry dials that have no matching activity
+    // record, and those really happened, so they must survive the recount.
+    // Returns {changed, applied}. Dry run unless you pass {apply:true}.
+    recountAttempts(opts) {
+      const changed = [];
+      cache.leads.forEach(l => {
+        const logged = (l.activities || []).filter(a => OUTREACH_TYPES.indexOf(a.type) >= 0).length;
+        const cur = l.attempts || 0;
+        let next = Math.max(cur, logged);
+        if (CONTACTED_STAGES.indexOf(l.stage) >= 0 && next < 1) next = 1;   // booked/reached implies contact
+        if (next !== cur) changed.push({ id: l.id, name: fullName(l), from: cur, to: next });
+      });
+      if (!(opts && opts.apply)) return Promise.resolve({ changed: changed, applied: false });
+      const CHUNK = 400;                    // stay well under Firestore's 500-write batch cap
+      const jobs = [];
+      for (let i = 0; i < changed.length; i += CHUNK) {
+        const batch = db().batch();
+        changed.slice(i, i + CHUNK).forEach(c => {
+          const l = findLead(c.id); if (l) l.attempts = c.to;             // optimistic local
+          batch.update(db().collection('leads').doc(c.id), { attempts: c.to });
+        });
+        jobs.push(batch.commit());
+      }
+      onChange();
+      return Promise.all(jobs).then(() => ({ changed: changed, applied: true }));
     },
 
     setStage(leadId, stage, extra, by) {
@@ -196,6 +241,7 @@ RWG.data = (function () {
       if (extra && extra.apptDate) { l.apptDate = extra.apptDate; note = 'Appointment ' + (old === 'Appointment Set' ? 'rescheduled' : 'set') + ' for ' + new Date(extra.apptDate).toLocaleString('en-US'); }
       if (extra && extra.outcome) l.outcome = extra.outcome;
       if (stage === 'Appointment Set') l.disposition = 'Appointment Set';
+      floorAttempts(l);        // booking (or dragging a card to Reached/Appt) implies contact happened
       logChange(l, by, changes, note);
       onChange(); saveLead(l);
       return withScore(l);
